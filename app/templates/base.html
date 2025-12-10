@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LocazioneTuristica</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="/overview">LocazioneTuristica</a>
+        <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+          <div class="navbar-nav">
+            <a class="nav-link" href="/overview">Overview</a>
+            <a class="nav-link" href="/anagrafiche">Anagrafiche</a>
+            <a class="nav-link" href="/stats">Statistiche</a>
+            <a class="nav-link" href="/settings">Impostazioni</a>
+          </div>
+        </div>
+        <div class="d-flex">
+          <button id="theme-toggle" class="btn btn-outline-secondary">Toggle Theme</button>
+          {% if request.session.get('username') %}
+            <div class="ms-3">{{ request.session.get('username') }} - <a href="/auth/logout">Logout</a></div>
+          {% else %}
+            <a class="btn btn-outline-primary ms-2" href="/login">Login</a>
+          {% endif %}
+        </div>
+      </div>
+    </nav>
+
+    <div class="container mt-4">
+      {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      const themeToggle = document.getElementById('theme-toggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          const body = document.body;
+          body.classList.toggle('dark');
+          document.cookie = `theme=${body.classList.contains('dark') ? 'dark' : 'light'}; path=/`;
+        });
+      }
+    </script>
+  </body>
+</html>

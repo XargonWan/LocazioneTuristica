@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Anagrafiche</h1>
+
+<div class="row mt-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5>Property Manager</h5>
+        <form method="post" action="/anagrafiche/property-manager/add">
+          <div class="d-flex">
+            <input class="form-control me-2" name="first_name" placeholder="Nome" required>
+            <input class="form-control me-2" name="last_name" placeholder="Cognome" required>
+            <button class="btn btn-primary">Aggiungi</button>
+          </div>
+        </form>
+        <ul class="mt-3 list-group">
+          {% for pm in pms %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ pm.first_name }} {{ pm.last_name }}</span>
+              <span>
+                {% if request.session.get('role') == 'admin' %}
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/property-manager/{{ pm.id }}/edit">Modifica</a>
+                {% endif %}
+              </span>
+            </li>
+          {% else %}
+            <li class="list-group-item">Nessun property manager</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5>Appartamenti</h5>
+        <form method="post" action="/anagrafiche/apartment/add">
+          <div class="d-flex">
+            <input class="form-control me-2" name="name" placeholder="Nome appartamento" required>
+            <button class="btn btn-primary">Aggiungi</button>
+          </div>
+        </form>
+        <ul class="mt-3 list-group">
+          {% for apt in apts %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ apt.name }}</span>
+              <span>
+                {% if request.session.get('role') == 'admin' %}
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/apartment/{{ apt.id }}/edit">Modifica</a>
+                {% endif %}
+              </span>
+            </li>
+          {% else %}
+            <li class="list-group-item">Nessun appartamento</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5>Ditte / Fornitori</h5>
+        <form method="post" action="/anagrafiche/company/add">
+          <div class="d-flex">
+            <input class="form-control me-2" name="company_name" placeholder="Nome ditta" required>
+            <button class="btn btn-primary">Aggiungi ditta</button>
+          </div>
+        </form>
+        <ul class="mt-3 list-group">
+          {% for c in companies %}
+            <li class="list-group-item">{{ c.company_name }}</li>
+          {% else %}
+            <li class="list-group-item">Nessuna ditta</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5>Piattaforme</h5>
+        <form method="post" action="/anagrafiche/platform/add">
+          <div class="d-flex">
+            <input class="form-control me-2" name="name" placeholder="Nome piattaforma" required>
+            <input class="form-control me-2" name="link" placeholder="Link (opzionale)">
+            <button class="btn btn-primary">Aggiungi</button>
+          </div>
+        </form>
+        <ul class="mt-3 list-group">
+          {% for p in platforms %}
+            <li class="list-group-item">{{ p.name }}</li>
+          {% else %}
+            <li class="list-group-item">Nessuna piattaforma</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

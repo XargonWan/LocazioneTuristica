@@ -64,5 +64,50 @@ PM saldato/totale
 ## Per "anagrafica"
 Ovvero quando guadagnato o pagato da e verso una singola entità, tipo il property manager, booking.com, commercialista, etc.
 
+## Autenticazione e utenze
+
+- Tipologie utente: Admin (full access) e Read-only (solo visualizzazione)
+- Schermata di login con password; se l'utente ha il flag `must_change_password` o la password è assente, verrà richiesto di impostarne una nuova alla prima autentificazione
+
+## Allegati
+
+- Tipi file supportati: PDF, immagini (jpg/jpeg, png), ODT, Excel (xls, xlsx)
+- Dimensione massima default: 10MB, impostabile nelle impostazioni
+- I file vengono salvati sul filesystem in `./data/attachments` con metadati nel DB
+
+## Ricorrenze
+
+- Non vengono materializzate voci future automaticamente (no job pianificato per ora)
+- Quando si crea una spesa/entrata con ricorrenza, la voce viene salvata immediatamente e il flag di ricorrenza resta nel record per future elaborazioni manuali o job futuri
+
+## Lingua e compatibilità
+
+- Lingua principale: Italiano (prevedere i18n in futuro)
+- UI mobile/desktop compatibile con browser moderni (Chrome/Firefox/Safari/Edge)
+
+## Requisiti aggiuntivi MVP
+
+- Single-tenant
+- Login con admin seed che obbliga a cambiare password al primo accesso
+- Giorno/Notte toggle persistente via cookie
+
+## MVP - Implementazioni fatte (progress)
+
+Le seguenti funzionalità sono state implementate nell'MVP:
+- Skeleton dell'app FastAPI + templates Jinja2 e Bootstrap
+- SQLite DB con SQLAlchemy, file DB e allegati montati in `./data`
+- Auth: login, set-password se flag `must_change_password` true; Admin/Read-only roles
+- CRUD base per: Property Manager, Appartamenti, Ditte (Company), Piattaforme
+- CRUD per Entrate (Incomes) e Spese (Expenses) con calcolo automatico net/gross e PM amount
+- Upload e download allegati, link a spese/entrate, limite di upload e controllo MIME
+- Overview di base con riepilogo mensile per anno
+- Pagine impostazioni con update di default IVA e max_upload_size
+
+## Next steps proposti
+- Migliorare UI (responsive, mobile-first), aggiungere grafici con Chart.js
+- Implementare export CSV/PDF
+- Aggiungere tests e Docker Compose di produzione
+- Implementare job pianificati o gestione ricorrenze (cron/celery)
+
 
 

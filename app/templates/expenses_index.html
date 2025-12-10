@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Spese</h1>
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/money/expenses/add">
+      <div class="mb-3">
+        <label>Data</label>
+        <input type="date" name="date" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label>Importo lordo</label>
+        <input type="number" name="gross_amount" step="0.01" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label>Appartamento</label>
+        <select name="apartment_id" class="form-control">
+          <option value="">---</option>
+          {% for apt in apartments %}
+          <option value="{{ apt.id }}">{{ apt.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>Allegati (seleziona più)</label>
+        <select name="attachment_ids" class="form-control" multiple>
+          {% for a in attachments %}
+          <option value="{{ a.id }}">{{ a.filename }} ({{ a.size }} bytes)</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>Associata a (PM)</label>
+        <select name="associated_pm_id" class="form-control">
+          <option value="">---</option>
+          {% for pm in pms %}
+          <option value="{{ pm.id }}">{{ pm.first_name }} {{ pm.last_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>IVA (%)</label>
+        <input type="number" name="vat_percent" step="0.01" class="form-control" value="22.0">
+      </div>
+      <div class="mb-3">
+        <label>Ricorrenza</label>
+        <select name="recurrence" class="form-control">
+          <option value="none">Mai</option>
+          <option value="monthly">Mensile</option>
+          <option value="yearly">Annuale</option>
+        </select>
+      </div>
+      <button class="btn btn-primary">Aggiungi spesa</button>
+    </form>
+    <ul class="list-group mt-3">
+      {% for e in expenses %}
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>{{ e.date }} - €{{ e.gross_amount }} (netto: {{ e.net_amount }} )</span>
+        <span>
+          {% if request.session.get('role') == 'admin' %}
+          <a class="btn btn-sm btn-outline-secondary" href="/money/expenses/{{ e.id }}/edit">Modifica</a>
+          {% endif %}
+        </span>
+      </li>
+      {% else %}
+      <li class="list-group-item">Nessuna spesa</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

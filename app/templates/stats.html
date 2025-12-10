@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Statistiche</h1>
+<div class="card">
+  <div class="card-body">
+    <p>Grafici e report verranno mostrati qui (Chart.js)</p>
+    <div class="mb-3">
+      <label>Anno</label>
+      <select id="year-select" class="form-control">
+        <option value="{{ (year if year else now) | default(2025) }}">{{ (year if year else now) | default(2025) }}</option>
+      </select>
+    </div>
+    <canvas id="monthly-chart"></canvas>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  async function loadChart(year){
+    const res = await fetch(`/api/stats/monthly?year=${year}`)
+    const data = await res.json();
+    const labels = data.data.map(d => d.month)
+    const income = data.data.map(d => d.income)
+    const expense = data.data.map(d => d.expense)
+    const ctx = document.getElementById('monthly-chart').getContext('2d')
+    if (window.monthlyChart) window.monthlyChart.destroy()
+    window.monthlyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Entrate', data: income, backgroundColor: 'rgba(75, 192, 192, 0.6)' },
+          { label: 'Spese', data: expense, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+        ]
+      },
+      options: { responsive: true }
+    })
+  }
+  document.addEventListener('DOMContentLoaded', async () => {
+    const year = new Date().getFullYear()
+    await loadChart(year)
+    document.getElementById('year-select').addEventListener('change', (ev) => {
+      loadChart(ev.target.value)
+    })
+  })
+</script>
+{% endblock %}

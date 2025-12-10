@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Allegati</h1>
+<div class="card">
+  <div class="card-body">
+    {% if request.session.get('role') == 'admin' %}
+    <form method="post" action="/attachments/upload" enctype="multipart/form-data">
+      <div class="mb-3">
+        <input type="file" name="file" class="form-control" required>
+      </div>
+      <button class="btn btn-primary" type="submit">Carica</button>
+    </form>
+    {% endif %}
+
+    <ul class="list-group mt-3">
+      {% for a in attachments %}
+      <li class="list-group-item">
+        <a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a> - {{ a.mimetype }} - {{ a.size }} bytes
+      </li>
+      {% else %}
+      <li class="list-group-item">Nessun allegato</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

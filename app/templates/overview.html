@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Overview</h1>
+<p>Benvenuto nella tua dashboard. Qui mostreremo i grafici e il riepilogo per appartamento, anno e mese.</p>
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Riepilogo anno {{ year }}</h5>
+        <ul class="list-group">
+          {% for m in months %}
+          <li class="list-group-item d-flex justify-content-between">
+            <div>Month {{ m.month }}</div>
+            <div>
+              <small class="text-success">Inc: €{{ '%.2f'|format(m.income) }}</small>
+              <small class="text-danger ms-3">Exp: €{{ '%.2f'|format(m.expense) }}</small>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <h5>Panoramica per anno</h5>
+        <p>UI di prova. I grafici verranno aggiunti.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

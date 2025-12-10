@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Utenti</h1>
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/auth/users/add">
+      <div class="d-flex">
+        <input class="form-control me-2" name="username" placeholder="username" required>
+        <select class="form-control me-2" name="role">
+          <option value="readonly">Read-only</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button class="btn btn-primary">Crea utente</button>
+      </div>
+    </form>
+    <ul class="mt-3 list-group">
+      {% for u in users %}
+        <li class="list-group-item">{{ u.username }} - {{ u.role }}</li>
+      {% else %}
+        <li class="list-group-item">Nessun utente</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

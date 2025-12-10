@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Impostazioni</h1>
+<div class="card">
+  <div class="card-body">
+      <p>Impostazioni dell'app: IVA, tema, limiti upload, ecc.</p>
+      <form method="post" action="/settings/update" class="mb-3">
+        <div class="d-flex">
+          <input type="hidden" name="key" value="default_iva">
+          <input class="form-control me-2" name="value" value="{{ (settings | selectattr('key', 'equalto', 'default_iva') | list | first).value if settings | selectattr('key', 'equalto', 'default_iva') | list else '22.0' }}">
+          <button class="btn btn-primary">Salva IVA</button>
+        </div>
+      </form>
+      <form method="post" action="/settings/update" class="mb-3">
+        <div class="d-flex">
+          <input type="hidden" name="key" value="max_upload_size">
+          <input class="form-control me-2" name="value" value="{{ (settings | selectattr('key', 'equalto', 'max_upload_size') | list | first).value if settings | selectattr('key', 'equalto', 'max_upload_size') | list else '10485760' }}">
+          <button class="btn btn-primary">Salva dimensione upload</button>
+        </div>
+      </form>
+    <ul class="list-group mt-2">
+      {% for s in settings %}
+        <li class="list-group-item"><strong>{{ s.key }}</strong>: {{ s.value }}</li>
+      {% else %}
+        <li class="list-group-item">Nessuna impostazione</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  web:
+    environment:
+      - UVICORN_RELOAD=1
+      - PYTHONUNBUFFERED=1
+      - SECRET_KEY=devsecret
+    volumes:
+      - ./:/app
+      - ./data:/data
+      - ./static:/app/static
+      - ./app/templates:/app/templates
