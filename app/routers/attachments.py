@@ -12,7 +12,7 @@ from app.utils import get_setting
 router = APIRouter(prefix="/attachments")
 templates = Jinja2Templates(directory="app/templates")
 
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/data/attachments")
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./data/attachments")
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
