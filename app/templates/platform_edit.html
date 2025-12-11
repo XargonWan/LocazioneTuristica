@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Modifica Piattaforma</h5>
+        <form method="post" action="/anagrafiche/platform/{{ platform.id }}/edit">
+          <div class="mb-3">
+            <label class="form-label">Nome</label>
+            <input class="form-control" type="text" name="name" value="{{ platform.name }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Link (opzionale)</label>
+            <input class="form-control" type="text" name="link" value="{{ platform.link }}">
+          </div>
+          <button class="btn btn-primary" type="submit">Salva</button>
+        </form>
+        <form method="post" action="/anagrafiche/platform/{{ platform.id }}/delete" class="mt-2">
+          <button class="btn btn-danger" type="submit">Elimina Piattaforma</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

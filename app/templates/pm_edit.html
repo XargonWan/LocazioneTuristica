@@ -15,6 +15,19 @@
             <label class="form-label">Cognome</label>
             <input class="form-control" type="text" name="last_name" value="{{ pm.last_name }}" required>
           </div>
+          <div class="mb-3">
+            <label class="form-label">Appartamenti associati</label>
+            <div>
+              {% for apt in apartments %}
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="apartment_ids" value="{{ apt.id }}" id="apt-{{ apt.id }}" {% if apt.property_manager_id == pm.id %}checked{% endif %}>
+                  <label class="form-check-label" for="apt-{{ apt.id }}">{{ apt.name }}</label>
+                </div>
+              {% else %}
+                <small class="text-muted">Nessun appartamento disponibile</small>
+              {% endfor %}
+            </div>
+          </div>
           <button class="btn btn-primary" type="submit">Salva</button>
         </form>
         <form method="post" action="/anagrafiche/property-manager/{{ pm.id }}/delete" class="mt-2">

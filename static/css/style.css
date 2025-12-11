@@ -1,8 +1,185 @@
-body.dark {
-  background: #121212;
-  color: #e0e0e0;
+:root {
+  --bg: #f8f9fa; /* light */
+  --text: #212529; /* base text light */
+  --card-bg: #ffffff;
+  --nav-bg: #ffffff;
+  --muted: #6c757d;
+  --border: #e9ecef;
+  --accent: #0d6efd;
 }
 
-.navbar.navbar-light.bg-white.dark, .navbar.navbar-light.bg-white.dark .nav-link {
-  background: #1f1f1f;
+/* Dark theme variables */
+html[data-theme="dark"],
+body.dark,
+body[data-theme="dark"] {
+  --bg: #222525; /* dark gray background */
+  --text: #e6e6e6; /* light text */
+  --card-bg: #2b2f31; /* card background */
+  --nav-bg: #2b2f31;
+  --muted: #a1a1a1;
+  --border: #3a3f41;
+  --accent: #3ea2ff; /* lighter blue accent */
+}
+
+html, body {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* Navbar */
+.navbar {
+  background: var(--nav-bg) !important;
+}
+.navbar .nav-link {
+  color: var(--text) !important;
+}
+
+/* Cards */
+.card {
+  background: var(--card-bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* Lists */
+.list-group-item {
+  background: var(--card-bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* Bootstrap utility overrides for dark theme */
+html[data-theme="dark"] .bg-white, html[data-theme="dark"] .bg-light,
+body.dark .bg-white, body[data-theme="dark"] .bg-white,
+body.dark .bg-light, body[data-theme="dark"] .bg-light {
+  background-color: var(--card-bg) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .navbar.navbar-light.bg-white, body.dark .navbar.navbar-light.bg-white, body[data-theme="dark"] .navbar.navbar-light.bg-white {
+  background-color: var(--nav-bg) !important;
+  color: var(--text) !important;
+}
+
+/* Buttons - ensure contrast and usable backgrounds */
+html[data-theme="dark"] .btn-primary, body.dark .btn-primary, body[data-theme="dark"] .btn-primary {
+  background-color: #1666c1;
+  border-color: #0c58a0;
+  color: #fff;
+}
+html[data-theme="dark"] .btn-success, body.dark .btn-success, body[data-theme="dark"] .btn-success {
+  background-color: #2ea04b;
+  border-color: #1f7a36;
+  color: #fff;
+}
+html[data-theme="dark"] .btn-danger, body.dark .btn-danger, body[data-theme="dark"] .btn-danger {
+  background-color: #cc4b4b;
+  border-color: #a33a3a;
+  color: #fff;
+}
+
+/* Inputs have darker background and subtle borders */
+html[data-theme="dark"] .form-control, body.dark .form-control, body[data-theme="dark"] .form-control {
+  background-color: #232625;
+  color: var(--text);
+  border: 1px solid #3a3f41;
+}
+html[data-theme="dark"] .form-select, body.dark .form-select, body[data-theme="dark"] .form-select {
+  background-color: #232625;
+  color: var(--text);
+  border: 1px solid #3a3f41;
+}
+
+/* Make table rows match dark theme */
+html[data-theme="dark"] table.table tbody tr td, html[data-theme="dark"] table.table thead tr th,
+body.dark table.table tbody tr td, body.dark table.table thead tr th,
+body[data-theme="dark"] table.table tbody tr td, body[data-theme="dark"] table.table thead tr th {
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+/* Forms and badges */
+html[data-theme="dark"] .badge, body.dark .badge, body[data-theme="dark"] .badge {
+  background-color: #444;
+  color: var(--text);
+}
+
+
+/* Buttons - neutral colors adapt to theme */
+.btn-outline-secondary {
+  color: var(--text);
+  border-color: var(--border);
+}
+.btn-outline-secondary:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+/* Form control adjustments for dark theme */
+.form-control {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.form-check-input:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+.form-check-label {
+  color: var(--text);
+}
+
+/* Badges */
+.badge.bg-secondary {
+  background: #3b3f42;
+  color: var(--text);
+}
+
+/* Theme icon visibility via CSS so it doesn't rely on JS to display correct icon */
+#theme-moon { display: none; }
+#theme-sun { display: inline-block; }
+html[data-theme="dark"] #theme-moon { display: inline-block !important; }
+html[data-theme="dark"] #theme-sun { display: none !important; }
+
+/* Tables */
+table.table {
+  color: var(--text);
+}
+
+/* Inputs placeholder etc */
+::placeholder {
+  color: var(--muted);
+}
+
+/* Make sure links and accents work */
+a {
+  color: var(--accent);
+}
+
+/* Ensure contrast on small components */
+.card .card-title, .card .card-text {
+  color: var(--text);
+}
+
+/* Modal / dropdown */
+.dropdown-menu, .modal-content {
+  background: var(--card-bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* Avoid fully black elements; prefer darker grey than black */
+.dark-surface {
+  background: #2b2f31 !important;
+  color: var(--text) !important;
+}
+
+/* Quick utilities */
+.text-muted {
+  color: var(--muted) !important;
+}
+
+/* Provide a subtle border for sections */
+.section-border {
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }

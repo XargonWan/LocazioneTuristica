@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LocazioneTuristica</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <script>
+      // Apply theme early to avoid white flash when cookie indicates dark mode
+      (function(){
+        try {
+          const m = document.cookie.match(/(?:^|; )theme=(dark|light)(?:;|$)/);
+          if (m && m[1] === 'dark') {
+            document.documentElement.setAttribute('data-theme','dark');
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          // ignore
+        }
+      })();
+    </script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   </head>
   <body class="bg-light">
@@ -13,14 +27,31 @@
         <a class="navbar-brand" href="/overview">LocazioneTuristica</a>
         <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
           <div class="navbar-nav">
-            <a class="nav-link" href="/overview">Overview</a>
+            <a class="nav-link" href="/overview">Rendiconto</a>
             <a class="nav-link" href="/anagrafiche">Anagrafiche</a>
             <a class="nav-link" href="/stats">Statistiche</a>
             <a class="nav-link" href="/settings">Impostazioni</a>
           </div>
         </div>
         <div class="d-flex">
-          <button id="theme-toggle" class="btn btn-outline-secondary">Toggle Theme</button>
+          <button id="theme-toggle" class="btn btn-outline-secondary" title="Toggle theme" aria-pressed="false" aria-label="Toggle theme">
+            <!-- Sun icon -->
+            <svg id="theme-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <!-- Moon icon -->
+            <svg id="theme-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;vertical-align:middle;">
+              <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+            </svg>
+          </button>
           {% if request.session.get('username') %}
             <div class="ms-3">{{ request.session.get('username') }} - <a href="/auth/logout">Logout</a></div>
           {% else %}
@@ -37,11 +68,49 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       const themeToggle = document.getElementById('theme-toggle');
+      const themeSun = document.getElementById('theme-sun');
+      const themeMoon = document.getElementById('theme-moon');
+      // initialize icon based on cookie
+      function getCookie(name) {
+        const cookies = document.cookie.split(';').map(c => c.trim());
+        for (const c of cookies) {
+          if (c.startsWith(name + '=')) return c.split('=')[1];
+        }
+        return null;
+      }
+      const savedTheme = getCookie('theme');
+      if (savedTheme === 'dark') {
+        document.body.classList.add('dark');
+        document.body.setAttribute('data-theme', 'dark');
+        if (themeMoon) themeMoon.style.display = 'inline-block';
+        if (themeSun) themeSun.style.display = 'none';
+        if (themeToggle) themeToggle.setAttribute('aria-pressed', 'true');
+      } else {
+        document.body.removeAttribute('data-theme');
+        if (themeSun) themeSun.style.display = 'inline-block';
+        if (themeMoon) themeMoon.style.display = 'none';
+        if (themeToggle) themeToggle.setAttribute('aria-pressed', 'false');
+      }
       if (themeToggle) {
         themeToggle.addEventListener('click', () => {
           const body = document.body;
-          body.classList.toggle('dark');
-          document.cookie = `theme=${body.classList.contains('dark') ? 'dark' : 'light'}; path=/`;
+          const html = document.documentElement;
+          const isDark = body.classList.toggle('dark');
+          if (isDark) {
+            body.setAttribute('data-theme', 'dark');
+            html.setAttribute('data-theme', 'dark');
+            if (themeMoon) themeMoon.style.display = 'inline-block';
+            if (themeSun) themeSun.style.display = 'none';
+            themeToggle.setAttribute('aria-pressed', 'true');
+          } else {
+            body.removeAttribute('data-theme');
+            html.removeAttribute('data-theme');
+            if (themeSun) themeSun.style.display = 'inline-block';
+            if (themeMoon) themeMoon.style.display = 'none';
+            themeToggle.setAttribute('aria-pressed', 'false');
+          }
+          // persist
+          document.cookie = `theme=${isDark ? 'dark' : 'light'}; path=/`;
         });
       }
     </script>

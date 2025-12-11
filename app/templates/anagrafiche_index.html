@@ -18,7 +18,18 @@
         <ul class="mt-3 list-group">
           {% for pm in pms %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
-              <span>{{ pm.first_name }} {{ pm.last_name }}</span>
+              <div>
+                <strong>{{ pm.first_name }} {{ pm.last_name }}</strong>
+                <div>
+                  <small class="text-muted">
+                    {% for apt in apts %}
+                      {% if apt.property_manager_id == pm.id %}
+                        <span class="badge bg-secondary me-1">{{ apt.name }}</span>
+                      {% endif %}
+                    {% endfor %}
+                  </small>
+                </div>
+              </div>
               <span>
                 {% if request.session.get('role') == 'admin' %}
                 <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/property-manager/{{ pm.id }}/edit">Modifica</a>
@@ -46,7 +57,18 @@
         <ul class="mt-3 list-group">
           {% for apt in apts %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
-              <span>{{ apt.name }}</span>
+              <div>
+                <span>{{ apt.name }}</span>
+                <div>
+                  <small class="text-muted">
+                    {% for pm in pms %}
+                      {% if pm.id == apt.property_manager_id %}
+                        {{ pm.first_name }} {{ pm.last_name }}
+                      {% endif %}
+                    {% endfor %}
+                  </small>
+                </div>
+              </div>
               <span>
                 {% if request.session.get('role') == 'admin' %}
                 <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/apartment/{{ apt.id }}/edit">Modifica</a>
@@ -75,7 +97,14 @@
         </form>
         <ul class="mt-3 list-group">
           {% for c in companies %}
-            <li class="list-group-item">{{ c.company_name }}</li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ c.company_name }}</span>
+              <span>
+                {% if request.session.get('role') == 'admin' %}
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/company/{{ c.id }}/edit">Modifica</a>
+                {% endif %}
+              </span>
+            </li>
           {% else %}
             <li class="list-group-item">Nessuna ditta</li>
           {% endfor %}
@@ -97,7 +126,14 @@
         </form>
         <ul class="mt-3 list-group">
           {% for p in platforms %}
-            <li class="list-group-item">{{ p.name }}</li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ p.name }}</span>
+              <span>
+                {% if request.session.get('role') == 'admin' %}
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/platform/{{ p.id }}/edit">Modifica</a>
+                {% endif %}
+              </span>
+            </li>
           {% else %}
             <li class="list-group-item">Nessuna piattaforma</li>
           {% endfor %}
