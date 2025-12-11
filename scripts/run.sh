@@ -23,25 +23,27 @@ EOF
 ensure_venv() {
   if [ ! -d ".venv" ]; then
     echo "Creating virtualenv .venv..."
-    python3 -m venv .venv
+    if command -v python3.14 >/dev/null 2>&1; then
+      python3.14 -m venv .venv
+    else
+      python3 -m venv .venv
+    fi
   fi
   # Activate
   # shellcheck source=/dev/null
   source .venv/bin/activate
-  pip install --upgrade pip
-  pip install -r requirements.txt
+  .venv/bin/python -m pip install --upgrade pip
+  .venv/bin/python -m pip install -r requirements.txt
 }
 
 seed_db() {
   # Ensure venv exists for running seed
   if [ ! -d ".venv" ]; then
     ensure_venv
-  else
-    # activate
-    # shellcheck source=/dev/null
-    source .venv/bin/activate
   fi
-  python scripts/seed.py
+  # shellcheck source=/dev/null
+  source .venv/bin/activate
+  PYTHONPATH="$ROOT_DIR" .venv/bin/python scripts/seed.py
 }
 
 start_dev() {
@@ -72,11 +74,12 @@ stop_services() {
 }
 
 if [ $# -eq 0 ]; then
-  usage
-  exit 1
+  echo "No command passed, starting development server (default). To see other commands run: $0 help"
+  COMMAND=dev
+else
+  COMMAND=$1
+  shift || true
 fi
-
-COMMAND=$1
 shift || true
 case "$COMMAND" in
   dev)
