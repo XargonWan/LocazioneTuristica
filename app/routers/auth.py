@@ -47,15 +47,24 @@ async def login(request: Request, username: str = Form(...), password: str = For
     try:
         user = get_user_by_username(db, username)
         if not user:
+            print('LOGIN DEBUG: user not found', username)
             return RedirectResponse(url="/login?failed=1", status_code=HTTP_303_SEE_OTHER)
-        if not user.password_hash or not pwd_context.verify(password, user.password_hash):
+        # Debug logs for verification (temporary)
+        print('LOGIN DEBUG: user found', user.username, 'hash present', bool(user.password_hash))
+        try:
+            ok_verify = pwd_context.verify(password, user.password_hash) if user.password_hash else False
+        except Exception as e:
+            ok_verify = False
+            print('LOGIN DEBUG: verify exception', e)
+        print('LOGIN DEBUG: verify_result', ok_verify)
+        if not user.password_hash or not ok_verify:
             return RedirectResponse(url="/login?failed=1", status_code=HTTP_303_SEE_OTHER)
         # write session cookie
         request.session['user_id'] = user.id
         request.session['username'] = user.username
         request.session['role'] = user.role
         if user.must_change_password:
-            return RedirectResponse(url="/set-password", status_code=HTTP_303_SEE_OTHER)
+            return RedirectResponse(url="/auth/set-password", status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url="/overview", status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -72,10 +81,10 @@ async def set_password_post(request: Request, new_password: str = Form(...)):
     try:
         user_id = request.session.get('user_id')
         if not user_id:
-            return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+            return RedirectResponse(url="/auth/login", status_code=HTTP_303_SEE_OTHER)
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            return RedirectResponse(url="/login", status_code=HTTP_303_SEE_OTHER)
+            return RedirectResponse(url="/auth/login", status_code=HTTP_303_SEE_OTHER)
         user.password_hash = pwd_context.hash(new_password)
         user.must_change_password = False
         db.add(user)
