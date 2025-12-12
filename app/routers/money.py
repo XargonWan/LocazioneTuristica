@@ -75,23 +75,48 @@ async def edit_expense_get(request: Request, expense_id: int):
         db.close()
 
 @router.api_route('/expenses/{expense_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), notes: str = Form(''), user=Depends(admin_required)):
+async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), notes: str = Form(''), apply_to: str = Form('single'), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
         e = db.query(Expense).filter(Expense.id == expense_id).first()
         if not e:
             return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
-        e.gross_amount = gross_amount
-        e.vat_percent = vat_percent
-        e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
-        e.date = date
-        e.apartment_id = apartment_id
-        e.associated_pm_id = associated_pm_id
-        e.associated_company_id = associated_company_id
-        e.notes = notes
-        db.add(e)
-        db.commit()
+        # If this expense belongs to a recurrence and the user wants to apply to the whole series, update all occurrences
+        if e.recurrence_id and apply_to == 'series':
+            occs = db.query(Expense).filter(Expense.recurrence_id == e.recurrence_id).all()
+            for o in occs:
+                o.gross_amount = gross_amount
+                o.vat_percent = vat_percent
+                o.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+                o.date = date
+                o.apartment_id = apartment_id
+                o.associated_pm_id = associated_pm_id
+                o.associated_company_id = associated_company_id
+                o.notes = notes
+                db.add(o)
+            # Also update recurrence metadata
+            from app.models import Recurrence
+            r = db.query(Recurrence).filter(Recurrence.id == e.recurrence_id).first()
+            if r:
+                r.start_date = date
+                r.notes = notes
+                db.add(r)
+            db.commit()
+        else:
+            # Apply only to single occurrence: unlink from recurrence and update fields
+            if e.recurrence_id and apply_to == 'single':
+                e.recurrence_id = None
+            e.gross_amount = gross_amount
+            e.vat_percent = vat_percent
+            e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+            e.date = date
+            e.apartment_id = apartment_id
+            e.associated_pm_id = associated_pm_id
+            e.associated_company_id = associated_company_id
+            e.notes = notes
+            db.add(e)
+            db.commit()
         return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -174,26 +199,52 @@ async def edit_income_get(request: Request, income_id: int):
         db.close()
 
 @router.api_route('/incomes/{income_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), notes: str = Form(''), user=Depends(admin_required)):
+async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), notes: str = Form(''), apply_to: str = Form('single'), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
         e = db.query(Income).filter(Income.id == income_id).first()
         if not e:
               return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
-        e.gross_amount = gross_amount
-        e.vat_percent = vat_percent
-        e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
-        e.pm_percent = pm_percent
-        e.pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
-        e.net_after_pm = round(e.net_amount - e.pm_amount, 2)
-        e.date = date
-        e.apartment_id = apartment_id
-        e.platform_id = platform_id
-        e.associated_pm_id = associated_pm_id
-        e.notes = notes
-        db.add(e)
-        db.commit()
+        # Handle editing apply scope
+        if e.recurrence_id and apply_to == 'series':
+            occs = db.query(Income).filter(Income.recurrence_id == e.recurrence_id).all()
+            for o in occs:
+                o.gross_amount = gross_amount
+                o.vat_percent = vat_percent
+                o.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+                o.pm_percent = pm_percent
+                o.pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
+                o.net_after_pm = round(o.net_amount - o.pm_amount, 2)
+                o.date = date
+                o.apartment_id = apartment_id
+                o.platform_id = platform_id
+                o.associated_pm_id = associated_pm_id
+                o.notes = notes
+                db.add(o)
+            from app.models import Recurrence
+            r = db.query(Recurrence).filter(Recurrence.id == e.recurrence_id).first()
+            if r:
+                r.start_date = date
+                r.notes = notes
+                db.add(r)
+            db.commit()
+        else:
+            if e.recurrence_id and apply_to == 'single':
+                e.recurrence_id = None
+            e.gross_amount = gross_amount
+            e.vat_percent = vat_percent
+            e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+            e.pm_percent = pm_percent
+            e.pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
+            e.net_after_pm = round(e.net_amount - e.pm_amount, 2)
+            e.date = date
+            e.apartment_id = apartment_id
+            e.platform_id = platform_id
+            e.associated_pm_id = associated_pm_id
+            e.notes = notes
+            db.add(e)
+            db.commit()
         return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()

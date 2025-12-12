@@ -108,6 +108,7 @@ Le seguenti funzionalità sono state implementate nell'MVP:
 - Implementare export CSV/PDF
 - Aggiungere tests e Docker Compose di produzione
 - Implementare job pianificati o gestione ricorrenze (cron/celery)
+ - Implementare l'edit scoping per voci ricorrenti (già implementato: ora è possibile scegliere se modificare solo la singola occorrenza o tutta la serie quando si modifica un'entrata/spesa con ricorrenza)
 
 
 
