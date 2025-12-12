@@ -80,12 +80,15 @@
       }
       const savedTheme = getCookie('theme');
       if (savedTheme === 'dark') {
-        document.body.classList.add('dark');
+        document.body.classList.remove('bg-light');
+        document.body.classList.add('dark', 'bg-body');
         document.body.setAttribute('data-theme', 'dark');
         if (themeMoon) themeMoon.style.display = 'inline-block';
         if (themeSun) themeSun.style.display = 'none';
         if (themeToggle) themeToggle.setAttribute('aria-pressed', 'true');
       } else {
+        document.body.classList.remove('dark');
+        document.body.classList.add('bg-light');
         document.body.removeAttribute('data-theme');
         if (themeSun) themeSun.style.display = 'inline-block';
         if (themeMoon) themeMoon.style.display = 'none';
@@ -97,12 +100,16 @@
           const html = document.documentElement;
           const isDark = body.classList.toggle('dark');
           if (isDark) {
+            body.classList.remove('bg-light');
+            body.classList.add('bg-body');
             body.setAttribute('data-theme', 'dark');
             html.setAttribute('data-theme', 'dark');
             if (themeMoon) themeMoon.style.display = 'inline-block';
             if (themeSun) themeSun.style.display = 'none';
             themeToggle.setAttribute('aria-pressed', 'true');
           } else {
+            body.classList.remove('bg-body');
+            body.classList.add('bg-light');
             body.removeAttribute('data-theme');
             html.removeAttribute('data-theme');
             if (themeSun) themeSun.style.display = 'inline-block';
@@ -113,6 +120,26 @@
           document.cookie = `theme=${isDark ? 'dark' : 'light'}; path=/`;
         });
       }
+      // Collapse details toggle text to show [+] when collapsed and [-] when open
+      document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.details-toggle').forEach(btn => {
+          const target = btn.getAttribute('data-bs-target');
+          const el = document.querySelector(target);
+          // set text based on initial state
+          if (el && el.classList.contains('show')) {
+            btn.textContent = '[-]';
+            btn.setAttribute('aria-expanded', 'true');
+          } else {
+            btn.textContent = '[+]';
+            btn.setAttribute('aria-expanded', 'false');
+          }
+          // listen to bootstrap collapse events
+          if (el) {
+            el.addEventListener('shown.bs.collapse', () => { btn.textContent = '[-]'; btn.setAttribute('aria-expanded', 'true'); });
+            el.addEventListener('hidden.bs.collapse', () => { btn.textContent = '[+]'; btn.setAttribute('aria-expanded', 'false'); });
+          }
+        });
+      });
     </script>
   </body>
 </html>

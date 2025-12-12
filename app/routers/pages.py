@@ -50,7 +50,8 @@ async def api_stats_monthly(year: int = None, request: Request = None):
                 continue
             if d.year == year:
                 months[d.month]['expense'] += float(exp.gross_amount)
-        result = [{'month': m, 'income': months[m]['income'], 'expense': months[m]['expense']} for m in sorted(months.keys())]
+        month_names = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+        result = [{'month': m, 'month_name': month_names[m], 'income': months[m]['income'], 'expense': months[m]['expense']} for m in sorted(months.keys())]
         return JSONResponse(content={'year': year, 'data': result})
     finally:
         db.close()
@@ -80,7 +81,7 @@ async def settings_update(request: Request, key: str = Form(...), value: str = F
             s.value = value
             db.add(s)
         db.commit()
-        return RedirectResponse(url='/settings')
+        return RedirectResponse(url='/settings', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
 

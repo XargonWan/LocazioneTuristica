@@ -22,3 +22,10 @@ def admin_required(request: Request):
     if user.role != 'admin':
         raise HTTPException(status_code=403, detail="Admin only")
     return user
+
+
+def auth_required(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail='Not authenticated')
+    return user

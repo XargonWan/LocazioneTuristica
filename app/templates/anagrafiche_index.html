@@ -51,6 +51,12 @@
         <form method="post" action="/anagrafiche/apartment/add">
           <div class="d-flex">
             <input class="form-control me-2" name="name" placeholder="Nome appartamento" required>
+            <select name="property_manager_id" class="form-select me-2">
+              <option value="">---</option>
+              {% for pm in pms %}
+                <option value="{{ pm.id }}">{{ pm.first_name }} {{ pm.last_name }}</option>
+              {% endfor %}
+            </select>
             <button class="btn btn-primary">Aggiungi</button>
           </div>
         </form>
@@ -70,6 +76,18 @@
                 </div>
               </div>
               <span>
+                {% if request.session.get('username') %}
+                  <form method="post" action="/anagrafiche/apartment/assign" class="d-inline">
+                    <input type="hidden" name="apartment_id" value="{{ apt.id }}">
+                    <select name="property_manager_id" class="form-select form-select-sm d-inline w-auto me-1">
+                      <option value="">---</option>
+                      {% for pm in pms %}
+                        <option value="{{ pm.id }}" {% if pm.id == apt.property_manager_id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
+                      {% endfor %}
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary" type="submit">Assegna</button>
+                  </form>
+                {% endif %}
                 {% if request.session.get('role') == 'admin' %}
                 <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/apartment/{{ apt.id }}/edit">Modifica</a>
                 {% endif %}

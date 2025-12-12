@@ -6,6 +6,7 @@ from starlette.status import HTTP_303_SEE_OTHER
 from app.db import SessionLocal
 from app.models import Expense, Income, Apartment, PropertyManager, Platform, Company, Attachment
 from app.auth_utils import admin_required, get_current_user
+from app.debug import log_request_form
 
 router = APIRouter(prefix="/money")
 templates = Jinja2Templates(directory="app/templates")
@@ -28,6 +29,7 @@ async def expenses_index(request: Request):
 
 @router.post("/expenses/add")
 async def add_expense(request: Request, gross_amount: float = Form(...), vat_percent: float = Form(22.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), notes: str = Form(''), user=Depends(admin_required)):
+    await log_request_form(request)
     db = SessionLocal()
     try:
         net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
@@ -63,7 +65,7 @@ async def edit_expense_get(request: Request, expense_id: int):
     try:
         e = db.query(Expense).filter(Expense.id == expense_id).first()
         if not e:
-            return RedirectResponse(url='/money/expenses')
+            return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
         apartments = db.query(Apartment).all()
         pms = db.query(PropertyManager).all()
         companies = db.query(Company).all()
@@ -72,13 +74,14 @@ async def edit_expense_get(request: Request, expense_id: int):
     finally:
         db.close()
 
-@router.post('/expenses/{expense_id}/edit')
+@router.api_route('/expenses/{expense_id}/edit', methods=["POST","PUT","PATCH"])
 async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), notes: str = Form(''), user=Depends(admin_required)):
+    await log_request_form(request)
     db = SessionLocal()
     try:
         e = db.query(Expense).filter(Expense.id == expense_id).first()
         if not e:
-            return RedirectResponse(url='/money/expenses')
+            return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
         e.gross_amount = gross_amount
         e.vat_percent = vat_percent
         e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
@@ -89,19 +92,20 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
         e.notes = notes
         db.add(e)
         db.commit()
-        return RedirectResponse(url='/money/expenses')
+        return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
 
 @router.post('/expenses/{expense_id}/delete')
 async def delete_expense(request: Request, expense_id: int, user=Depends(admin_required)):
+    await log_request_form(request)
     db = SessionLocal()
     try:
         e = db.query(Expense).filter(Expense.id == expense_id).first()
         if e:
             db.delete(e)
             db.commit()
-        return RedirectResponse(url='/money/expenses')
+        return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
 
@@ -122,6 +126,7 @@ async def incomes_index(request: Request):
 
 @router.post("/incomes/add")
 async def add_income(request: Request, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), notes: str = Form(''), user=Depends(admin_required)):
+    await log_request_form(request)
     db = SessionLocal()
     try:
         net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
@@ -159,7 +164,7 @@ async def edit_income_get(request: Request, income_id: int):
     try:
         e = db.query(Income).filter(Income.id == income_id).first()
         if not e:
-            return RedirectResponse(url='/money/incomes')
+            return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
         apartments = db.query(Apartment).all()
         platforms = db.query(Platform).all()
         pms = db.query(PropertyManager).all()
@@ -168,13 +173,14 @@ async def edit_income_get(request: Request, income_id: int):
     finally:
         db.close()
 
-@router.post('/incomes/{income_id}/edit')
+@router.api_route('/incomes/{income_id}/edit', methods=["POST","PUT","PATCH"])
 async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), notes: str = Form(''), user=Depends(admin_required)):
+    await log_request_form(request)
     db = SessionLocal()
     try:
         e = db.query(Income).filter(Income.id == income_id).first()
         if not e:
-            return RedirectResponse(url='/money/incomes')
+              return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
         e.gross_amount = gross_amount
         e.vat_percent = vat_percent
         e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
@@ -188,18 +194,19 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
         e.notes = notes
         db.add(e)
         db.commit()
-        return RedirectResponse(url='/money/incomes')
+        return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
 
 @router.post('/incomes/{income_id}/delete')
 async def delete_income(request: Request, income_id: int, user=Depends(admin_required)):
+    await log_request_form(request)
     db = SessionLocal()
     try:
         e = db.query(Income).filter(Income.id == income_id).first()
         if e:
             db.delete(e)
             db.commit()
-        return RedirectResponse(url='/money/incomes')
+        return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()

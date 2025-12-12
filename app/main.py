@@ -14,6 +14,22 @@ app = FastAPI(title="LocazioneTuristica")
 # Templates
 templates = Jinja2Templates(directory="app/templates")
 
+def _format_date(value):
+    from datetime import datetime
+    if not value:
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime('%d/%m/%Y')
+    try:
+        # handle strings in YYYY-MM-DD
+        return datetime.strptime(value, '%Y-%m-%d').strftime('%d/%m/%Y')
+    except Exception:
+        # fallback: return as-is
+        return str(value)
+
+# Register Jinja2 filter
+templates.env.filters['format_date'] = _format_date
+
 # Sessions
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
@@ -25,6 +41,49 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.on_event("startup")
 async def startup_event():
     init_db()
+    # Print route map to help debug 405 issues at startup
+    try:
+        print('Registered routes:')
+        for r in app.routes:
+            try:
+                methods = getattr(r, 'methods', None)
+                path = getattr(r, 'path', None) or getattr(r, 'path_regex', None) or getattr(r, 'path_format', None)
+                print(f" {path} -> {methods}")
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+@app.middleware("http")
+async def log_405_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code == 405:
+        try:
+            user = request.session.get('username')
+        except Exception:
+            user = None
+        print(f"DEBUG 405: {request.method} {request.url} user={user}")
+        # Print all registered routes and their methods to help identify endpoints that exist
+        try:
+            for r in request.app.routes:
+                try:
+                    methods = getattr(r, 'methods', None)
+                    path = getattr(r, 'path', None) or getattr(r, 'path_regex', None) or getattr(r, 'path_format', None)
+                    if methods and path:
+                        print(f"ROUTE: {path} METHODS: {methods}")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        # Log headers
+        try:
+            print('HEADERS:')
+            for k, v in request.headers.items():
+                print(f" {k}: {v}")
+        except Exception:
+            pass
+    return response
 
 
 @app.get("/")
@@ -61,9 +120,34 @@ async def overview(request: Request):
             if d.year == year:
                 months[d.month]['expense'] += float(exp.gross_amount)
         months_list = [{'month': m, 'income': months[m]['income'], 'expense': months[m]['expense']} for m in sorted(months.keys())]
-        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year})
+        # Build per-month entries lists for incomes and expenses so the template can render details
+        entries_by_month = {m: [] for m in range(1, 13)}
+        for inc in incomes:
+            try:
+                d = datetime.strptime(inc.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year == year:
+                entries_by_month[d.month].append({'type': 'income', 'date': d, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id})
+        for exp in expenses:
+            try:
+                d = datetime.strptime(exp.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year == year:
+                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id})
+        # Sort entries in each month by date descending (most recent first)
+        for m in range(1,13):
+            entries_by_month[m].sort(key=lambda x: x['date'], reverse=True)
+        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'entries_by_month': entries_by_month})
     finally:
         db.close()
+
+
+@app.post("/overview")
+async def overview_post(request: Request):
+    # Accept POST to /overview (round-trip) and redirect to /overview GET to avoid 405 for clients that POST
+    return RedirectResponse(url="/overview")
 
 
 @app.get("/login")

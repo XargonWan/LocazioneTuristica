@@ -11,6 +11,15 @@
             <label class="form-label">Nome</label>
             <input class="form-control" type="text" name="name" value="{{ apt.name }}" required>
           </div>
+          <div class="mb-3">
+            <label class="form-label">Property Manager</label>
+            <select name="property_manager_id" class="form-select">
+              <option value="">---</option>
+              {% for pm in pms %}
+                <option value="{{ pm.id }}" {% if apt.property_manager_id == pm.id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
           <button class="btn btn-primary" type="submit">Salva</button>
         </form>
         <form method="post" action="/anagrafiche/apartment/{{ apt.id }}/delete" class="mt-2">

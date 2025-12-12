@@ -6,6 +6,8 @@
   --muted: #6c757d;
   --border: #e9ecef;
   --accent: #0d6efd;
+  --income-color: #1fa64a;
+  --expense-color: #d9534f;
 }
 
 /* Dark theme variables */
@@ -48,7 +50,7 @@ html, body {
   border-color: var(--border);
 }
 
-/* Bootstrap utility overrides for dark theme */
+/* Bootstrap utility overrides for dark theme (make them !important to override bootstraps) */
 html[data-theme="dark"] .bg-white, html[data-theme="dark"] .bg-light,
 body.dark .bg-white, body[data-theme="dark"] .bg-white,
 body.dark .bg-light, body[data-theme="dark"] .bg-light {
@@ -145,6 +147,18 @@ table.table {
   color: var(--text);
 }
 
+/* Make striped tables friendly in dark theme */
+html[data-theme="dark"] table.table.table-striped tbody tr:nth-of-type(odd),
+body.dark table.table.table-striped tbody tr:nth-of-type(odd),
+body[data-theme="dark"] table.table.table-striped tbody tr:nth-of-type(odd) {
+  background: rgba(255,255,255,0.02) !important;
+}
+html[data-theme="dark"] table.table.table-striped tbody tr:nth-of-type(even),
+body.dark table.table.table-striped tbody tr:nth-of-type(even),
+body[data-theme="dark"] table.table.table-striped tbody tr:nth-of-type(even) {
+  background: rgba(255,255,255,0.01) !important;
+}
+
 /* Inputs placeholder etc */
 ::placeholder {
   color: var(--muted);
@@ -167,6 +181,126 @@ a {
   border-color: var(--border);
 }
 
+/* Buttons that are light, default, or outline-light get a darker surface in dark mode */
+html[data-theme="dark"] .btn-light, body.dark .btn-light, body[data-theme="dark"] .btn-light,
+html[data-theme="dark"] .btn-outline-light, body.dark .btn-outline-light, body[data-theme="dark"] .btn-outline-light,
+html[data-theme="dark"] .btn-default, body.dark .btn-default, body[data-theme="dark"] .btn-default {
+  background: #2b2f31 !important;
+  color: var(--text) !important;
+  border-color: #3a3f41 !important;
+}
+
+/* Fix text-dark classes that would otherwise be pure black */
+html[data-theme="dark"] .text-dark, body.dark .text-dark, body[data-theme="dark"] .text-dark {
+  color: var(--text) !important;
+}
+
+/* Ensure any element with bg-body or bg-white are adapted under dark theme */
+html[data-theme="dark"] .bg-body, body.dark .bg-body, body[data-theme="dark"] .bg-body,
+html[data-theme="dark"] .bg-white, body.dark .bg-white, body[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-light, body.dark .bg-light, body[data-theme="dark"] .bg-light {
+  background-color: var(--card-bg) !important;
+  color: var(--text) !important;
+}
+
+/* Make sure any element with 'bg-' class gets dark background */
+html[data-theme="dark"] [class*="bg-"] { background-color: var(--card-bg) !important; color: var(--text) !important; }
+body.dark [class*="bg-"] { background-color: var(--card-bg) !important; color: var(--text) !important; }
+
+/* Override inline background styles (best effort) */
+html[data-theme="dark"] [style*="background"] { background-color: var(--card-bg) !important; color: var(--text) !important; }
+body.dark [style*="background"] { background-color: var(--card-bg) !important; color: var(--text) !important; }
+
+/* Ensure all content blocks use dark theme colors */
+html[data-theme="dark"] .card, body.dark .card, html[data-theme="dark"] .card-body, body.dark .card-body,
+html[data-theme="dark"] .card-header, body.dark .card-header, html[data-theme="dark"] .card-footer, body.dark .card-footer {
+  background-color: var(--card-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Navbar & header/footer */
+html[data-theme="dark"] nav, body.dark nav, html[data-theme="dark"] header, body.dark header, html[data-theme="dark"] footer, body.dark footer {
+  background-color: var(--nav-bg) !important;
+  color: var(--text) !important;
+}
+
+/* Breadcrumbs, pagination & alerts */
+html[data-theme="dark"] .breadcrumb, body.dark .breadcrumb,
+html[data-theme="dark"] .pagination, body.dark .pagination,
+html[data-theme="dark"] .alert, body.dark .alert {
+  background-color: var(--card-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Modal / dropdown / popover / tooltip / toast */
+html[data-theme="dark"] .modal-content, body.dark .modal-content,
+html[data-theme="dark"] .dropdown-menu, body.dark .dropdown-menu,
+html[data-theme="dark"] .popover, body.dark .popover,
+html[data-theme="dark"] .toast, body.dark .toast {
+  background-color: var(--card-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Make images and svg backgrounds unchanged but ensure color contrast for text next to them */
+html[data-theme="dark"] img, body.dark img, html[data-theme="dark"] svg, body.dark svg { filter: none !important; }
+
+/* Ensure list-group uses dark background */
+html[data-theme="dark"] .list-group-item, body.dark .list-group-item { background-color: var(--card-bg) !important; color: var(--text) !important; }
+
+/* Tables */
+html[data-theme="dark"] table.table, body.dark table.table { background: transparent; color: var(--text); }
+html[data-theme="dark"] table.table thead th, body.dark table.table thead th { background-color: var(--card-bg) !important; color: var(--text) !important; }
+
+/* Pagination, nav, form help etc */
+html[data-theme="dark"] .pagination .page-item .page-link, body.dark .pagination .page-item .page-link { background: var(--card-bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+
+/* Alerts and toast inner */
+html[data-theme="dark"] .alert, body.dark .alert { background: var(--card-bg) !important; color: var(--text) !important; border-color: var(--border) !important; }
+html[data-theme="dark"] .toast .toast-header, body.dark .toast .toast-header, html[data-theme="dark"] .toast .toast-body, body.dark .toast .toast-body { background: var(--card-bg) !important; color: var(--text) !important; }
+
+/* Tooltip */
+html[data-theme="dark"] .tooltip-inner, body.dark .tooltip-inner { background: #333 !important; color: var(--text) !important; }
+
+/* Input group shadows and small notes */
+html[data-theme="dark"] .form-text, body.dark .form-text { color: var(--muted) !important; }
+
+/* Dropdown items */
+html[data-theme="dark"] .dropdown-item, body.dark .dropdown-item { background: var(--card-bg) !important; color: var(--text) !important; }
+
+/* Navbar collapse (search / nav links) */
+html[data-theme="dark"] .navbar .navbar-collapse, body.dark .navbar .navbar-collapse { background-color: var(--nav-bg) !important; }
+
+/* Footer or bottom bars - ensure background consistent */
+html[data-theme="dark"] footer, body.dark footer { background: var(--nav-bg) !important; color: var(--text) !important; }
+
+/* Ensure small buttons and cards inside lists are also adjusted */
+html[data-theme="dark"] .btn-outline-secondary, body.dark .btn-outline-secondary { color: var(--text) !important; border-color: var(--border) !important; }
+
+/* Breadcrumb separators */
+html[data-theme="dark"] .breadcrumb-item + .breadcrumb-item::before { color: var(--muted); }
+
+/* Buttons that should be neutral */
+html[data-theme="dark"] .btn-light, body.dark .btn-light, html[data-theme="dark"] .btn-outline-light, body.dark .btn-outline-light { background: #2b2f31 !important; color: var(--text) !important; border-color: #3a3f41 !important; }
+
+/* Fix card headers that use .bg-* */
+html[data-theme="dark"] .card-header.bg-white, body.dark .card-header.bg-white { background-color: var(--card-bg) !important; }
+
+/* More robust text overrides to prevent black text on dark backgrounds */
+html[data-theme="dark"] .text-dark, body.dark .text-dark, html[data-theme="dark"] .text-body, body.dark .text-body { color: var(--text) !important; }
+html[data-theme="dark"] .text-muted, body.dark .text-muted { color: var(--muted) !important; }
+
+/* Adjust badge variants */
+html[data-theme="dark"] .badge, body.dark .badge { background-color: #3b3f42 !important; color: var(--text) !important; }
+
+/* Ensure nav links are readable */
+html[data-theme="dark"] .navbar .nav-link, body.dark .navbar .nav-link { color: var(--text) !important; }
+
+/* Ensure form elements adapted */
+html[data-theme="dark"] select.form-select, html[data-theme="dark"] .form-control, body.dark select.form-select, body.dark .form-control { background-color: #232625 !important; color: var(--text) !important; border: 1px solid #3a3f41 !important; }
+
 /* Avoid fully black elements; prefer darker grey than black */
 .dark-surface {
   background: #2b2f31 !important;
@@ -182,4 +316,63 @@ a {
 .section-border {
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+/* Month details compact layout */
+.month-details .card {
+  width: 100% !important;
+  margin: 0 !important;
+}
+.month-details .card-body {
+  padding: 0.5rem 0.75rem !important; /* make it compact */
+}
+.month-details .list-group-item {
+  padding: 0.5rem 0.75rem !important;
+  font-size: 0.95rem;
+}
+
+/* Income/Expense color coding */
+.entry-income { color: var(--income-color) !important; /* general green */ }
+.entry-expense { color: var(--expense-color) !important; /* general red */ }
+
+/* On dark theme use slightly lighter tones */
+html[data-theme="dark"] .entry-income, body.dark .entry-income { color: #2ea04b !important; }
+html[data-theme="dark"] .entry-expense, body.dark .entry-expense { color: #ff6b6b !important; }
+
+/* Make amount bold and color-coded */
+.amount { font-weight: 600; }
+.entry-income .amount { color: #1fa64a !important; }
+.entry-expense .amount { color: #d9534f !important; }
+
+/* Net month totals */
+.net-total { font-weight: 700; }
+.net-positive { color: var(--income-color) !important; }
+.net-negative { color: var(--expense-color) !important; }
+.net-zero { color: var(--muted) !important; }
+
+/* Table tweaks: reduce gaps and ensure good contrast */
+.table-sm td, .table-sm th { padding: 0.35rem 0.5rem; }
+.table-borderless tbody + tbody { border-top: 0; }
+
+/* Responsive: for very narrow screens, stack columns */
+@media (max-width: 576px) {
+  .table-responsive table thead { display: none; }
+  .table-responsive table tbody tr { display: block; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+  .table-responsive table tbody tr td { display: block; text-align: left; }
+  .table-responsive table tbody tr td.amount { text-align: left; }
+  .table-responsive table tbody tr td:last-child { text-align: right; }
+}
+
+/* Ensure internal blocks use dark variables in dark mode */
+html[data-theme="dark"] .card, html[data-theme="dark"] .card-body, html[data-theme="dark"] .card-header,
+html[data-theme="dark"] .container, html[data-theme="dark"] .row, html[data-theme="dark"] .col,
+html[data-theme="dark"] .section-border {
+  background-color: var(--card-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme="dark"] .card .card-title, html[data-theme="dark"] .card .card-text, html[data-theme="dark"] .list-group-item,
+html[data-theme="dark"] .form-label, html[data-theme="dark"] .form-control::placeholder {
+  color: var(--text) !important;
 }

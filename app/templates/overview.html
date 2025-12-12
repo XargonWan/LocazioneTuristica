@@ -12,21 +12,77 @@
 </div>
 <p>Benvenuto nella tua dashboard. Qui mostreremo i grafici e il riepilogo per appartamento, anno e mese.</p>
 <div class="row">
-  <div class="col-md-6">
+  <div class="col-md-8">
     <div class="card mb-3">
       <div class="card-body">
         <h5>Riepilogo anno {{ year }}</h5>
         <ul class="list-group">
           {% for m in months %}
-          <li class="list-group-item d-flex justify-content-between">
-            <div>Month {{ m.month }}</div>
-            <div>
-              <small class="text-success">Inc: €{{ '%.2f'|format(m.income) }}</small>
-              <small class="text-danger ms-3">Exp: €{{ '%.2f'|format(m.expense) }}</small>
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                {% set net = (m.income - m.expense) %}
+                {% if net > 0 %}
+                  {% set net_class = 'net-positive' %}
+                {% elif net < 0 %}
+                  {% set net_class = 'net-negative' %}
+                {% else %}
+                  {% set net_class = 'net-zero' %}
+                {% endif %}
+                <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
+                <div>
+                  <small class="text-success">Inc: €{{ '%.2f'|format(m.income) }}</small>
+                  <small class="text-danger ms-3">Exp: €{{ '%.2f'|format(m.expense) }}</small>
+                </div>
+              </div>
+            </div>
+            <div class="mt-2 month-details" id="month-details-{{ m.month }}">
+              <div>
+                <div class="table-responsive">
+                  <table class="table table-sm table-borderless mb-0">
+                    <thead>
+                      <tr>
+                        <th scope="col">Causale</th>
+                        <th scope="col">Data</th>
+                        <th scope="col" class="text-end">Importo</th>
+                        <th scope="col">&nbsp;</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for item in entries_by_month[m.month] %}
+                        <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
+                          <td>{{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}</td>
+                          <td>{{ item.date|format_date }}</td>
+                          <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
+                          <td class="text-end">
+                            {% if request.session.get('role') == 'admin' %}
+                              {% if item.type == 'income' %}
+                                <a class="btn btn-sm btn-outline-secondary" href="/money/incomes/{{ item.id }}/edit">Modifica</a>
+                              {% else %}
+                                <a class="btn btn-sm btn-outline-secondary" href="/money/expenses/{{ item.id }}/edit">Modifica</a>
+                              {% endif %}
+                            {% endif %}
+                          </td>
+                        </tr>
+                      {% else %}
+                        <tr><td colspan="4">Nessuna voce</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </li>
           {% endfor %}
         </ul>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Controlli</h5>
+        <p class="text-muted">Filtra per anno o appartamento (in sviluppo)</p>
       </div>
     </div>
   </div>
