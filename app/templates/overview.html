@@ -92,7 +92,28 @@
     <div class="card">
       <div class="card-body">
         <h5>Panoramica per anno</h5>
-        <p>UI di prova. I grafici verranno aggiunti.</p>
+        <div class="d-flex align-items-center mb-3">
+          <label class="me-2 mb-0">Anno</label>
+          <select id="overview-year" class="form-select form-select-sm w-auto me-3">
+          </select>
+          <button id="overview-refresh" class="btn btn-sm btn-outline-primary">Aggiorna</button>
+        </div>
+        <div class="chart-container mb-3" style="height:300px;">
+          <canvas id="overview-chart"></canvas>
+        </div>
+        <div class="table-responsive">
+          <table id="overview-table" class="table table-sm table-borderless">
+            <thead>
+              <tr>
+                <th>Mese</th>
+                <th class="text-end">Inc</th>
+                <th class="text-end">Exp</th>
+                <th class="text-end">Net</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

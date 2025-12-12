@@ -359,7 +359,7 @@ html[data-theme="dark"] .entry-expense, body.dark .entry-expense { color: #ff6b6
   .table-responsive table thead { display: none; }
   .table-responsive table tbody tr { display: block; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
   .table-responsive table tbody tr td { display: block; text-align: left; }
-  .table-responsive table tbody tr td.amount { text-align: left; }
+  .table-responsive table tbody tr td.amount { text-align: right; }
   .table-responsive table tbody tr td:last-child { text-align: right; }
 }
 

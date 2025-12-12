@@ -66,6 +66,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js for graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
       const themeToggle = document.getElementById('theme-toggle');
       const themeSun = document.getElementById('theme-sun');
@@ -140,6 +142,79 @@
           }
         });
       });
+      // Overview per-year chart loader
+      async function loadOverviewYearly(year) {
+        const res = await fetch(`/api/stats/monthly?year=${year}`, { credentials: 'same-origin' });
+        if (!res.ok) {
+          console.error('Failed to load monthly stats for year', year);
+          return null;
+        }
+        const js = await res.json();
+        return js.data;
+      }
+      function renderOverviewChart(data) {
+        const labels = data.map(d => d.month_name);
+        const incomes = data.map(d => +d.income);
+        const expenses = data.map(d => +d.expense);
+        const ctx = document.getElementById('overview-chart').getContext('2d');
+        if (window.overviewChart) { window.overviewChart.destroy(); }
+        const incomeColor = (getComputedStyle(document.documentElement).getPropertyValue('--income-color') || '#1fa64a').trim();
+        const expenseColor = (getComputedStyle(document.documentElement).getPropertyValue('--expense-color') || '#d9534f').trim();
+        window.overviewChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [
+              { label: 'Entrate', data: incomes, backgroundColor: incomeColor },
+              { label: 'Spese', data: expenses, backgroundColor: expenseColor }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { tooltip: { mode: 'index' }, legend: { position: 'top' } },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
+          }
+        });
+      }
+      function renderOverviewTable(data) {
+        const tbody = document.querySelector('#overview-table tbody');
+        tbody.innerHTML = '';
+        data.forEach(d => {
+          const net = (Number(d.income) - Number(d.expense));
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${d.month_name}</td>
+            <td class="text-end">€${Number(d.income).toFixed(2)}</td>
+            <td class="text-end">€${Number(d.expense).toFixed(2)}</td>
+            <td class="text-end ${net>0? 'net-positive' : net<0 ? 'net-negative' : 'net-zero'}">€${net.toFixed(2)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+      function initOverviewControls() {
+        const sel = document.getElementById('overview-year');
+        if (!sel) return;
+        const now = new Date();
+        const defaultYearFromServer = '{{ year | default('') }}';
+        const year = defaultYearFromServer ? parseInt(defaultYearFromServer, 10) : now.getFullYear();
+        for (let y = year; y >= year - 5; --y) {
+          const o = document.createElement('option'); o.value = y; o.text = y; sel.appendChild(o);
+        }
+        sel.value = year;
+        const refresh = document.getElementById('overview-refresh');
+        async function refreshHandler() {
+          const yr = sel.value;
+          const data = await loadOverviewYearly(yr);
+          if (!data) return;
+          renderOverviewChart(data);
+          renderOverviewTable(data);
+        }
+        refresh.addEventListener('click', refreshHandler);
+        // initial load
+        refreshHandler();
+      }
+      document.addEventListener('DOMContentLoaded', initOverviewControls);
     </script>
   </body>
 </html>
