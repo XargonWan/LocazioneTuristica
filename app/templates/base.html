@@ -231,6 +231,101 @@
         refreshHandler();
       }
       document.addEventListener('DOMContentLoaded', initOverviewControls);
+      // Global toggleEditMode fallback: attach a function to window so inline onclick can call it
+      if (!window.toggleEditMode) {
+        window.toggleEditMode = function(type){
+          const cfg = {
+            incomes: { checkboxSel: '.multi-select-checkbox', selSel: '.sel-income', editBtnId: 'editModeToggle', bulkEditBtnId: 'bulkEditBtn', bulkDeleteBtnId: 'bulkDeleteBtn', selectAllId: 'selectAllIncomes', updateCounts: function(){ if (typeof updateCounts === 'function') updateCounts(); } },
+            expenses: { checkboxSel: '.multi-select-checkbox-exp', selSel: '.sel-expense', editBtnId: 'editModeToggleExp', bulkEditBtnId: 'bulkEditExpBtn', bulkDeleteBtnId: 'bulkDeleteExpBtn', selectAllId: 'selectAllExpenses', updateCounts: function(){ if (typeof updateCounts === 'function') updateCounts(); } },
+            overview: { checkboxSel: '.sel-ov', selSel: '.sel-ov', editBtnId: 'editModeToggleOv', bulkEditBtnId: 'bulkEditOvBtn', bulkDeleteBtnId: 'bulkDeleteOvBtn', selectAllId: 'selectAllOv', updateCounts: function(){ if (typeof updateCounts === 'function') updateCounts(); } }
+          }[type];
+          if (!cfg) return;
+          const first = document.querySelector(cfg.checkboxSel);
+          const isActive = first ? !first.classList.contains('d-none') : false;
+          // toggle visibility
+          document.querySelectorAll(cfg.checkboxSel).forEach(el => el.classList.toggle('d-none', isActive));
+          const bulkEditBtn = document.getElementById(cfg.bulkEditBtnId);
+          const bulkDeleteBtn = document.getElementById(cfg.bulkDeleteBtnId);
+          const selectAll = document.getElementById(cfg.selectAllId);
+          if (bulkEditBtn) bulkEditBtn.classList.toggle('d-none', isActive);
+          if (bulkDeleteBtn) bulkDeleteBtn.classList.toggle('d-none', isActive);
+          if (selectAll) selectAll.classList.toggle('d-none', isActive);
+          // toggle body class and button visuals
+          const btn = document.getElementById(cfg.editBtnId);
+          if (btn) {
+            btn.classList.toggle('btn-primary', !isActive);
+            btn.classList.toggle('btn-outline-primary', isActive);
+            btn.textContent = isActive ? 'Modifica...' : 'Fatto';
+          }
+          if (isActive) {
+            // exiting edit mode => clear selections
+            document.querySelectorAll(cfg.selSel).forEach(cb => { cb.checked = false; });
+            if (selectAll) selectAll.checked = false;
+            // update counts if available
+            try { cfg.updateCounts(); } catch (e) { /* ignore */ }
+          }
+        };
+      }
+
+      // Global click delegate for edit-mode toggles.
+      // This makes the "Modifica..." button work even if a per-page DOMContentLoaded script failed.
+      (function(){
+        try {
+          document.addEventListener('click', function(e){
+            const t = e.target;
+            if (!t || !t.closest) return;
+            const btn = t.closest('#editModeToggle, #editModeToggleExp, #editModeToggleOv');
+            if (!btn) return;
+            // Prevent any other handlers from swallowing the click.
+            try { e.preventDefault(); e.stopImmediatePropagation(); } catch (err) { /* ignore */ }
+            if (btn.id === 'editModeToggle') return window.toggleEditMode && window.toggleEditMode('incomes');
+            if (btn.id === 'editModeToggleExp') return window.toggleEditMode && window.toggleEditMode('expenses');
+            if (btn.id === 'editModeToggleOv') return window.toggleEditMode && window.toggleEditMode('overview');
+          }, true); // capture
+        } catch (e) {
+          // ignore
+        }
+      })();
+      // Safe modal show helper (returns true on success, false on failure)
+      if (!window.showModalSafe) {
+        window.showModalSafe = function(modalElOrId){
+          try {
+            const modalEl = (typeof modalElOrId === 'string') ? document.getElementById(modalElOrId) : modalElOrId;
+            if (!modalEl) return false;
+            // use Bootstrap's getOrCreateInstance to avoid double instantiation
+            const m = bootstrap.Modal.getOrCreateInstance(modalEl);
+            m.show();
+            return true;
+          } catch (e) {
+            console.debug('showModalSafe: bootstrap modal show failed', e);
+            return false;
+          }
+        };
+      }
+
+      // Small visual banner to indicate fallback flows (auto-hide after a few seconds)
+      if (!window.showFallbackBanner) {
+        window.showFallbackBanner = function(msg, timeoutMs=4000){
+          try {
+            let b = document.getElementById('fallback-banner');
+            if (!b) {
+              b = document.createElement('div');
+              b.id = 'fallback-banner';
+              b.style.position = 'fixed';
+              b.style.top = '12px';
+              b.style.left = '50%';
+              b.style.transform = 'translateX(-50%)';
+              b.style.zIndex = 11000;
+              b.style.minWidth = '320px';
+              b.className = 'alert alert-warning shadow-sm';
+              document.body.appendChild(b);
+            }
+            b.textContent = msg;
+            b.style.display = 'block';
+            setTimeout(()=>{ b.style.display = 'none'; }, timeoutMs);
+          } catch (e) { /* ignore */ }
+        };
+      }
     </script>
   </body>
 </html>

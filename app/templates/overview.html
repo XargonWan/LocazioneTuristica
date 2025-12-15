@@ -10,6 +10,14 @@
     {% endif %}
   </div>
 </div>
+{% if request.session.get('role') == 'admin' %}
+<div class="d-flex gap-2 my-2">
+  <button id="editModeToggleOv" class="btn btn-outline-primary btn-sm" onclick="toggleEditMode('overview')">Modifica...</button>
+  <button id="bulkEditOvBtn" class="btn btn-sm btn-secondary d-none" data-bs-toggle="modal" data-bs-target="#bulkEditOvModal">Modifica selezionate</button>
+  <button id="bulkDeleteOvBtn" class="btn btn-sm btn-danger d-none">Elimina selezionate</button>
+  <label class="ms-auto">Seleziona tutto <input type="checkbox" id="selectAllOv" class="form-check-input ms-1 d-none"></label>
+</div>
+{% endif %}
 <p>Benvenuto nella tua dashboard. Qui mostreremo i grafici e il riepilogo per appartamento, anno e mese.</p>
 <div class="row">
   <div class="col-md-8">
@@ -47,6 +55,7 @@
                                 <table class="table table-sm mb-0">
                                   <thead>
                                     <tr>
+                                      <th scope="col"></th>
                                       <th scope="col">Causale</th>
                                       <th scope="col">Data</th>
                                       <th scope="col" class="text-end">Importo</th>
@@ -56,6 +65,7 @@
                                   <tbody>
                                     {% for item in entries_by_month[m.month] %}
                                       <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
+                                        <td class="align-middle"><input type="checkbox" class="form-check-input sel-ov d-none" value="{{ item.id }}" data-type="{{ item.type }}"></td>
                                         <td>{{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}</td>
                                         <td>{{ item.date|format_date }}</td>
                                         <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
@@ -213,4 +223,235 @@
             {% endfor %}
           {% endfor %}
         </div>
+
+{% if request.session.get('role') == 'admin' %}
+<!-- Bulk edit modal (overview) -->
+<div class="modal fade" id="bulkEditOvModal" tabindex="-1" aria-labelledby="bulkEditOvLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bulkEditOvLabel">Modifica voci selezionate (Rendiconto)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <form id="bulkEditOvForm" method="post">
+      <div class="modal-body">
+        <p id="bulkEditOvCount">Selezionate <strong>0</strong> voci.</p>
+        <div class="mb-2">
+          <label>Descrizione</label>
+          <input type="text" name="notes" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label>Importo netto</label>
+          <input type="number" name="net_amount" step="0.01" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label>Importo lordo</label>
+          <input type="number" name="gross_amount" step="0.01" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label>Appartamento</label>
+          <select name="apartment_id" class="form-control">
+            <option value="">---</option>
+            {% for a in apartments %}
+            <option value="{{ a.id }}">{{ a.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-2">
+          <label>IVA (%)</label>
+          <input type="number" name="vat_percent" step="0.01" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label>PM</label>
+          <select name="associated_pm_id" class="form-control">
+            <option value="">---</option>
+            {% for pm in pms %}
+            <option value="{{ pm.id }}">{{ pm.first_name }} {{ pm.last_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-2">
+          <label>Percentuale PM (%)</label>
+          <input type="number" name="pm_percent" step="0.01" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label>Data</label>
+          <input type="date" name="date" class="form-control">
+        </div>
+        <input type="hidden" name="ids" id="bulkEditOvIds">
+        <input type="hidden" name="_type" id="bulkEditOvType">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        <button id="bulkEditOvConfirm" type="button" class="btn btn-primary">Salva modifiche</button>
+      </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk delete modal (overview) -->
+<div class="modal fade" id="bulkDeleteOvModal" tabindex="-1" aria-labelledby="bulkDeleteOvLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bulkDeleteOvLabel">Elimina voci selezionate (Rendiconto)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <form id="bulkDeleteOvForm" method="post">
+      <div class="modal-body">
+        <p id="bulkDeleteOvCount">Selezionate <strong>0</strong> voci. Stai per eliminarle, vuoi continuare?</p>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="delete_series_if_present" id="deleteSeriesIfPresentOv">
+          <label class="form-check-label" for="deleteSeriesIfPresentOv">Se una voce fa parte di una serie, elimina tutta la serie</label>
+        </div>
+        <input type="hidden" name="ids" id="bulkDeleteOvIds">
+        <input type="hidden" name="_type" id="bulkDeleteOvType">
+        <input type="hidden" name="next" value="/overview">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        <button id="bulkDeleteOvConfirm" type="button" class="btn btn-danger">Conferma eliminazione</button>
+      </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const editModeToggleOv = document.getElementById('editModeToggleOv');
+  const bulkEditBtn = document.getElementById('bulkEditOvBtn');
+  const bulkDeleteBtn = document.getElementById('bulkDeleteOvBtn');
+  const selectAll = document.getElementById('selectAllOv');
+  const bulkEditCount = document.getElementById('bulkEditOvCount');
+  const bulkDeleteCount = document.getElementById('bulkDeleteOvCount');
+  const bulkEditIds = document.getElementById('bulkEditOvIds');
+  const bulkDeleteIds = document.getElementById('bulkDeleteOvIds');
+  const bulkEditType = document.getElementById('bulkEditOvType');
+  const bulkDeleteType = document.getElementById('bulkDeleteOvType');
+  const bulkEditConfirm = document.getElementById('bulkEditOvConfirm');
+  const bulkDeleteConfirm = document.getElementById('bulkDeleteOvConfirm');
+
+  function updateSelectionUI(show){
+    document.querySelectorAll('.sel-ov').forEach(el => el.classList.toggle('d-none', !show));
+    bulkEditBtn.classList.toggle('d-none', !show);
+    bulkDeleteBtn.classList.toggle('d-none', !show);
+    selectAll.classList.toggle('d-none', !show);
+  }
+
+  function selected(){
+    const checked = Array.from(document.querySelectorAll('.sel-ov:checked'));
+    const ids = checked.map(cb => cb.value);
+    const types = Array.from(new Set(checked.map(cb => cb.dataset.type)));
+    return { ids, types };
+  }
+
+  function updateCounts(){
+    const s = selected();
+    bulkEditCount.innerHTML = `Selezionate <strong>${s.ids.length}</strong> voci.`;
+    bulkDeleteCount.innerHTML = `Selezionate <strong>${s.ids.length}</strong> voci. Stai per eliminarle, vuoi continuare?`;
+    bulkEditIds.value = s.ids.join(',');
+    bulkDeleteIds.value = s.ids.join(',');
+    bulkEditType.value = s.types.length === 1 ? s.types[0] : '';
+    bulkDeleteType.value = s.types.length === 1 ? s.types[0] : '';
+  }
+
+  if (editModeToggleOv) {
+    editModeToggleOv.addEventListener('click', () => {
+      const firstChk = document.querySelector('.sel-ov');
+      const isActive = firstChk ? !firstChk.classList.contains('d-none') : false;
+      updateSelectionUI(!isActive);
+      console.log('editModeToggleOv clicked, active before toggle:', isActive);
+      document.body.classList.toggle('editing', !isActive);
+      editModeToggleOv.classList.toggle('btn-primary', !isActive);
+      editModeToggleOv.classList.toggle('btn-outline-primary', isActive);
+      if (!isActive) {
+        editModeToggleOv.textContent = 'Fatto';
+        console.log('Entered overview edit mode');
+      } else {
+        editModeToggleOv.textContent = 'Modifica...';
+        console.log('Exited overview edit mode');
+        // if hiding, clear selections
+        document.querySelectorAll('.sel-ov').forEach(cb => { cb.checked = false; });
+        updateCounts();
+      }
+    });
+  }
+
+  selectAll && selectAll.addEventListener('change', () => {
+    const checked = selectAll.checked;
+    document.querySelectorAll('.sel-ov').forEach(cb => cb.checked = checked);
+    updateCounts();
+  });
+
+  document.querySelectorAll('.sel-ov').forEach(cb => cb.addEventListener('change', updateCounts));
+
+  // Note: single edit toggle used to enter/exit edit mode
+
+  bulkEditConfirm && bulkEditConfirm.addEventListener('click', () => {
+    const s = selected();
+    if (s.ids.length === 0){ alert('Seleziona almeno una voce.'); return; }
+    if (s.types.length !== 1){ alert('Seleziona solo voci dello stesso tipo (tutte entrate o tutte spese).'); return; }
+    if (!confirm(`Stai modificando ${s.ids.length} voci, vuoi davvero continuare?`)) return;
+    // set action depending on type
+    const form = document.getElementById('bulkEditOvForm');
+    form.action = s.types[0] === 'income' ? '/money/incomes/bulk_edit' : '/money/expenses/bulk_edit';
+    form.submit();
+  });
+
+  bulkDeleteConfirm && bulkDeleteConfirm.addEventListener('click', () => {
+    const s = selected();
+    if (s.ids.length === 0){ alert('Seleziona almeno una voce.'); return; }
+    if (s.types.length !== 1){ alert('Seleziona solo voci dello stesso tipo (tutte entrate o tutte spese).'); return; }
+    if (!confirm(`Stai eliminando ${s.ids.length} voci, vuoi davvero continuare?`)) return;
+    const form = document.getElementById('bulkDeleteOvForm');
+    form.action = s.types[0] === 'income' ? '/money/incomes/bulk_delete' : '/money/expenses/bulk_delete';
+    form.submit();
+  });
+
+  // Fallback: intercept click on the overview bulk-delete button to avoid relying on Bootstrap modal
+  const bulkDeleteOvBtnEl = document.getElementById('bulkDeleteOvBtn');
+  if (bulkDeleteOvBtnEl) {
+    // capturing listener at document level to intercept before Bootstrap modal handlers
+    document.addEventListener('click', function captureBulkDeleteOv(e){
+      const btn = e.target.closest && e.target.closest('#bulkDeleteOvBtn');
+      if (!btn) return;
+      try { e.preventDefault(); e.stopImmediatePropagation(); } catch (err) { /* ignore */ }
+      const s = selected();
+      console.debug('captured bulkDeleteOvBtn click (capture), selected=', s);
+      if (s.ids.length === 0){ alert('Seleziona almeno una voce.'); return; }
+      if (s.types.length !== 1){ alert('Seleziona solo voci dello stesso tipo (tutte entrate o tutte spese).'); return; }
+      const modalShown = window.showModalSafe && window.showModalSafe('bulkDeleteOvModal');
+      if (modalShown) {
+        document.getElementById('bulkDeleteOvIds').value = s.ids.join(',');
+        document.getElementById('bulkDeleteOvType').value = s.types[0] || '';
+        return;
+      }
+      window.showFallbackBanner && window.showFallbackBanner('Impossibile aprire la finestra di conferma — utilizzo flusso alternativo');
+      if (!confirm(`Stai eliminando ${s.ids.length} voci, vuoi davvero continuare?`)) return;
+      const form = document.getElementById('bulkDeleteOvForm');
+      form.action = s.types[0] === 'income' ? '/money/incomes/bulk_delete' : '/money/expenses/bulk_delete';
+      document.getElementById('bulkDeleteOvIds').value = s.ids.join(',');
+      document.getElementById('bulkDeleteOvType').value = s.types[0] || '';
+      form.submit();
+    }, true);
+  }
+
+  // UX: in edit mode, click on a row toggles the checkbox
+  document.addEventListener('click', (e) => {
+    if (!document.body.classList.contains('editing')) return;
+    const target = e.target;
+    if (target.closest('button, a, input, select, textarea, label')) return;
+    const row = target.closest('tr');
+    if (!row) return;
+    const cb = row.querySelector('input.sel-ov');
+    if (!cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});
+</script>
+{% endif %}
+
 {% endblock %}

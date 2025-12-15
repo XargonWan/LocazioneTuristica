@@ -4,6 +4,16 @@
 <h1>Entrate</h1>
 <div class="card">
   <div class="card-body">
+    <div class="d-flex justify-content-between mb-2">
+      <div>
+        <button id="editModeToggle" class="btn btn-outline-primary btn-sm" onclick="toggleEditMode('incomes')">Modifica...</button>
+        <button id="bulkEditBtn" class="btn btn-sm btn-secondary d-none" data-bs-toggle="modal" data-bs-target="#bulkEditIncomeModal">Modifica selezionate</button>
+        <button id="bulkDeleteBtn" class="btn btn-sm btn-danger d-none">Elimina selezionate</button>
+      </div>
+      <div>
+        <label class="me-2">Seleziona tutto <input type="checkbox" id="selectAllIncomes" class="form-check-input ms-1 d-none"></label>
+      </div>
+    </div>
     <form method="post" action="/money/incomes/add">
       <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
@@ -73,11 +83,14 @@
         <a class="btn btn-secondary" href="{{ next if next is defined and next else '/money/incomes' }}">Annulla</a>
         <button class="btn btn-primary">Aggiungi entrata</button>
       </div>
-    </form>
+      </form>
     </form>
     <ul class="list-group mt-3">
       {% for e in incomes %}
       <li class="list-group-item d-flex justify-content-between align-items-center">
+        <div class="form-check me-3 d-none multi-select-checkbox">
+          <input class="form-check-input sel-income" type="checkbox" value="{{ e.id }}" id="selIncome-{{ e.id }}">
+        </div>
         <div>
           <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }})</div>
           <small class="text-muted">{{ e.notes }}</small>
@@ -151,11 +164,110 @@
     </ul>
   </div>
 </div>
-{% endblock %}
+
 
   {# Delete confirmation modals rendered outside the main list to avoid nested modals/backdrop issues #}
   {% for e in incomes %}
     {% if request.session.get('role') == 'admin' %}
+    <!-- Bulk edit modal -->
+    {% if loop.first %}
+    <div class="modal fade" id="bulkEditIncomeModal" tabindex="-1" aria-labelledby="bulkEditIncomeLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="bulkEditIncomeLabel">Modifica voci selezionate</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+          </div>
+          <form id="bulkEditIncomeForm" method="post" action="/money/incomes/bulk_edit">
+          <div class="modal-body">
+            <p id="bulkEditCount">Selezionate <strong>0</strong> voci.</p>
+            <div class="mb-2">
+              <label>Descrizione</label>
+              <input type="text" name="notes" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label>Importo netto</label>
+              <input type="number" name="net_amount" step="0.01" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label>Importo lordo</label>
+              <input type="number" name="gross_amount" step="0.01" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label>Appartamento</label>
+              <select name="apartment_id" class="form-control">
+                <option value="">---</option>
+                {% for a in apartments %}
+                <option value="{{ a.id }}">{{ a.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-2">
+              <label>IVA (%)</label>
+              <input type="number" name="vat_percent" step="0.01" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label>PM</label>
+              <select name="associated_pm_id" class="form-control">
+                <option value="">---</option>
+                {% for pm in pms %}
+                <option value="{{ pm.id }}">{{ pm.first_name }} {{ pm.last_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-2">
+              <label>Percentuale PM (%)</label>
+              <input type="number" name="pm_percent" step="0.01" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label>Data</label>
+              <input type="date" name="date" class="form-control">
+            </div>
+            <div class="mb-2">
+              <label>Piattaforma</label>
+              <select name="platform_id" class="form-control">
+                <option value="">---</option>
+                {% for p in platforms %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <input type="hidden" name="ids" id="bulkEditIncomeIds">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+            <button id="bulkEditConfirm" type="button" class="btn btn-primary">Salva modifiche</button>
+          </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <!-- Bulk delete confirmation modal -->
+    <div class="modal fade" id="bulkDeleteIncomeModal" tabindex="-1" aria-labelledby="bulkDeleteIncomeLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="bulkDeleteIncomeLabel">Elimina voci selezionate</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+          </div>
+          <form id="bulkDeleteIncomeForm" method="post" action="/money/incomes/bulk_delete">
+          <div class="modal-body">
+            <p id="bulkDeleteCount">Selezionate <strong>0</strong> voci. Stai per eliminarle, vuoi continuare?</p>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="delete_series_if_present" id="deleteSeriesIfPresent">
+              <label class="form-check-label" for="deleteSeriesIfPresent">Se una voce fa parte di una serie, elimina tutta la serie</label>
+            </div>
+            <input type="hidden" name="ids" id="bulkDeleteIncomeIds">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+            <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
+          </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <div class="modal fade" id="deleteConfirmIncome-{{ e.id }}" tabindex="-1" aria-labelledby="deleteConfirmIncomeLabel-{{ e.id }}" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -195,10 +307,158 @@
     const pmPercentInput = document.querySelector('input[name="pm_percent"]');
     if (aptSelect && pmPercentInput) {
       aptSelect.addEventListener('change', () => {
-        const id = aptSelect.value;
-        const pct = (aptPmMap && id && aptPmMap[id]) ? aptPmMap[id] : 0.0;
-        pmPercentInput.value = pct;
-      });
+          const id = aptSelect.value;
+          const mapEntry = (aptPmMap && id && aptPmMap[id]) ? aptPmMap[id] : {percent:0.0, pm_id:null};
+          pmPercentInput.value = mapEntry.percent;
+          // auto-select associated PM if apartment has one
+          const pmSelect = document.querySelector('select[name="associated_pm_id"]');
+          if (pmSelect) {
+            if (mapEntry.pm_id) {
+              pmSelect.value = mapEntry.pm_id;
+            } else {
+              pmSelect.value = '';
+            }
+          }
+        });
     }
   });
+</script>
+
+{% endblock %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const toggleBtn = document.getElementById('toggleMultiSelect');
+  const bulkEditBtn = document.getElementById('bulkEditBtn');
+  const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+  const selectAll = document.getElementById('selectAllIncomes');
+  const checkboxes = document.querySelectorAll('.sel-income');
+  const bulkEditCount = document.getElementById('bulkEditCount');
+  const bulkDeleteCount = document.getElementById('bulkDeleteCount');
+  const bulkEditIds = document.getElementById('bulkEditIncomeIds');
+  const bulkDeleteIds = document.getElementById('bulkDeleteIncomeIds');
+  const bulkEditConfirm = document.getElementById('bulkEditConfirm');
+
+  function updateSelectionUI(show){
+    document.querySelectorAll('.multi-select-checkbox').forEach(el => el.classList.toggle('d-none', !show));
+    bulkEditBtn.classList.toggle('d-none', !show);
+    bulkDeleteBtn.classList.toggle('d-none', !show);
+    selectAll.classList.toggle('d-none', !show);
+  }
+
+  function selectedIds(){
+    return Array.from(document.querySelectorAll('.sel-income:checked')).map(cb => cb.value);
+  }
+
+  function updateCounts(){
+    const ids = selectedIds();
+    bulkEditCount.innerHTML = `Selezionate <strong>${ids.length}</strong> voci.`;
+    bulkDeleteCount.innerHTML = `Selezionate <strong>${ids.length}</strong> voci. Stai per eliminarle, vuoi continuare?`;
+    bulkEditIds.value = ids.join(',');
+    bulkDeleteIds.value = ids.join(',');
+  }
+
+  const editModeToggle = document.getElementById('editModeToggle');
+  if (editModeToggle) {
+    editModeToggle.addEventListener('click', () => {
+      const firstChk = document.querySelector('.multi-select-checkbox');
+      const isActive = firstChk ? !firstChk.classList.contains('d-none') : false;
+      // toggle state
+      updateSelectionUI(!isActive);
+      console.log('editModeToggle clicked, active before toggle:', isActive);
+      document.body.classList.toggle('editing', !isActive);
+      editModeToggle.classList.toggle('btn-primary', !isActive);
+      editModeToggle.classList.toggle('btn-outline-primary', isActive);
+      if (!isActive) {
+        editModeToggle.textContent = 'Fatto';
+        console.log('Entered edit mode');
+      } else {
+        editModeToggle.textContent = 'Modifica...';
+        console.log('Exited edit mode');
+        // clearing selections when leaving edit mode
+        document.querySelectorAll('.sel-income').forEach(cb => { cb.checked = false; });
+        updateCounts();
+      }
+    });
+  }
+
+  selectAll.addEventListener('change', () => {
+    const checked = selectAll.checked;
+    document.querySelectorAll('.sel-income').forEach(cb => cb.checked = checked);
+    updateCounts();
+  });
+
+  document.querySelectorAll('.sel-income').forEach(cb => cb.addEventListener('change', updateCounts));
+
+  // Confirm bulk edit before actually submitting: open a confirm dialog
+  bulkEditConfirm.addEventListener('click', () => {
+    const ids = selectedIds();
+    if (ids.length === 0) {
+      alert('Seleziona almeno una voce.');
+      return;
+    }
+    if (!confirm(`Stai modificando ${ids.length} voci, vuoi davvero continuare?`)) return;
+    document.getElementById('bulkEditIncomeForm').submit();
+  });
+
+  // Ensure bulk delete actually has selected ids when submitting and show a confirmation
+  const bulkDeleteForm = document.getElementById('bulkDeleteIncomeForm');
+  if (bulkDeleteForm) {
+    // update counts when the modal is shown so the hidden ids are fresh
+    const bulkDeleteModal = document.getElementById('bulkDeleteIncomeModal');
+    if (bulkDeleteModal) bulkDeleteModal.addEventListener('show.bs.modal', updateCounts);
+
+    bulkDeleteForm.addEventListener('submit', (e) => {
+      const ids = (bulkDeleteIds && bulkDeleteIds.value) ? bulkDeleteIds.value.split(',').filter(x=>x) : [];
+      console.debug('bulkDeleteIncomeForm submit, ids=', ids);
+      if (ids.length === 0) {
+        e.preventDefault();
+        alert('Seleziona almeno una voce.');
+        return;
+      }
+      if (!confirm(`Stai eliminando ${ids.length} voci, vuoi davvero continuare?`)) {
+        e.preventDefault();
+        return;
+      }
+      // allow submit to proceed
+    });
+  }
+
+  // Fallback: intercept click on the bulk-delete button to avoid relying on Bootstrap modal (which
+  // may fail to initialize in some environments). If modal fails to open, this will still perform
+  // a confirm() and submit directly.
+  const bulkDeleteBtnEl = document.getElementById('bulkDeleteBtn');
+  if (bulkDeleteBtnEl) {
+    // Attach a capturing listener on document to intercept clicks before Bootstrap's data-api
+    document.addEventListener('click', function captureBulkDelete(e){
+      const btn = e.target.closest && e.target.closest('#bulkDeleteBtn');
+      if (!btn) return;
+      // Stop other handlers (bootstrap) that may throw
+      try { e.preventDefault(); e.stopImmediatePropagation(); } catch (err) { /* ignore */ }
+      updateCounts();
+      const ids = selectedIds();
+      console.debug('captured bulkDeleteBtn click (capture), ids=', ids);
+      if (ids.length === 0) { alert('Seleziona almeno una voce.'); return; }
+      // attempt modal show
+      const modalShown = window.showModalSafe && window.showModalSafe('bulkDeleteIncomeModal');
+      if (modalShown) return; // modal will show and manage submission
+      window.showFallbackBanner && window.showFallbackBanner('Impossibile aprire la finestra di conferma — utilizzo flusso alternativo');
+      if (!confirm(`Stai eliminando ${ids.length} voci, vuoi davvero continuare?`)) return;
+      bulkDeleteForm && bulkDeleteForm.submit();
+    }, true); // use capture phase
+  }
+
+  // UX: in edit mode, click on the row toggles selection (so you don't need to hit the tiny checkbox)
+  document.addEventListener('click', (e) => {
+    if (!document.body.classList.contains('editing')) return;
+    const target = e.target;
+    // don't toggle when interacting with buttons/links/inputs
+    if (target.closest('button, a, input, select, textarea, label')) return;
+    const row = target.closest('.list-group-item');
+    if (!row) return;
+    const cb = row.querySelector('input.sel-income');
+    if (!cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});
 </script>

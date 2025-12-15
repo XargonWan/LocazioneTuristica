@@ -8,6 +8,9 @@ LocazioneTuristica è una semplice ma completa applicazione web per gestire le e
 - Possibilità di convertire una voce singola in una serie ricorrente durante la modifica
 - Gestione di appartamenti, property managers (PM), e piattaforme (per entrate)
 - **Facile gestione dei Property Managers (PM)**: interfaccia semplice per aggiungere, modificare e assegnare PM alle unità.
+ - Modalità di selezione multipla per modificare o eliminare voci in blocco (multi-select). È disponibile nelle pagine Entrate/Spese e anche nel Rendiconto (vista mensile).
+  - Quando si salva una modifica in blocco, viene mostrata una conferma con il messaggio: "Stai modificando X voci, vuoi davvero continuare?".
+  - Nota: nella vista Rendiconto le selezioni devono essere tutte dello stesso tipo (solo entrate o solo spese) prima di poter applicare modifiche o eliminazioni in blocco.
 - Allegati per ogni voce (PDF, immagini, fogli di calcolo, ecc.)
 - Interfaccia con modali e conferme inline per un'esperienza utente fluida
 - Filtri e vista mensile con riepilogo entrate/spese per mese

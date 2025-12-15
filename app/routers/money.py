@@ -41,13 +41,14 @@ async def expenses_index(request: Request):
                 if pm:
                     default_pm_percent = float(pm.percent or 0.0)
         # build a mapping for apartment to its PM percent for client-side default behavior
-        apt_pm_map = {}
-        for apt in apartments:
-            if apt.property_manager_id:
-                pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
-                apt_pm_map[apt.id] = float(pm.percent or 0.0) if pm else 0.0
-            else:
-                apt_pm_map[apt.id] = 0.0
+            # build a mapping for apartment to its PM percent and PM id for client-side default behavior (used in JS)
+            apt_pm_map = {}
+            for apt in apartments:
+                if apt.property_manager_id:
+                    pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
+                    apt_pm_map[apt.id] = {"percent": float(pm.percent or 0.0) if pm else 0.0, "pm_id": pm.id if pm else None}
+                else:
+                    apt_pm_map[apt.id] = {"percent": 0.0, "pm_id": None}
         next_url = request.query_params.get('next') or None
         # Prefetch associated PM names and numeric fields to avoid lazy-loading in templates
         for e in expenses:
@@ -346,6 +347,68 @@ async def delete_expense(request: Request, expense_id: int, user=Depends(admin_r
     finally:
         db.close()
 
+
+@router.post('/expenses/bulk_edit')
+async def bulk_edit_expenses(request: Request, ids: str = Form(...), notes: str = Form(None), net_amount: float = Form(None), gross_amount: float = Form(None), apartment_id: int = Form(None), vat_percent: float = Form(None), associated_pm_id: int = Form(None), pm_percent: float = Form(None), date: str = Form(None), associated_company_id: int = Form(None), recurrence: str = Form('none'), user=Depends(admin_required)):
+    await log_request_form(request)
+    db = SessionLocal()
+    try:
+        id_list = [int(x) for x in ids.split(',') if x]
+        occs = db.query(Expense).filter(Expense.id.in_(id_list)).all()
+        for o in occs:
+            if notes is not None and notes != '':
+                o.notes = notes
+            if gross_amount is not None:
+                o.gross_amount = float(gross_amount)
+            if vat_percent is not None:
+                o.vat_percent = float(vat_percent)
+            if net_amount is not None:
+                o.net_amount = float(net_amount)
+            else:
+                if gross_amount is not None and vat_percent is not None:
+                    o.net_amount = round(float(gross_amount) * (1 - (float(vat_percent) / 100.0)), 2)
+            if pm_percent is not None:
+                o.pm_percent = float(pm_percent)
+            if apartment_id:
+                o.apartment_id = apartment_id
+            if associated_pm_id:
+                o.associated_pm_id = associated_pm_id
+            if associated_company_id:
+                o.associated_company_id = associated_company_id
+            if date:
+                o.date = date
+            # recompute pm_amount and net_after_pm
+            o.pm_amount = round(float(o.gross_amount) * (float(o.pm_percent or 0.0) / 100.0), 2)
+            o.net_after_pm = round((float(o.net_amount or 0.0)) - o.pm_amount, 2)
+            db.add(o)
+        db.commit()
+        return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
+    finally:
+        db.close()
+
+
+@router.post('/expenses/bulk_delete')
+async def bulk_delete_expenses(request: Request, ids: str = Form(...), delete_series_if_present: str = Form(None), next: str = Form(None), user=Depends(admin_required)):
+    await log_request_form(request)
+    db = SessionLocal()
+    try:
+        id_list = [int(x) for x in ids.split(',') if x]
+        if delete_series_if_present:
+            for eid in id_list:
+                exp = db.query(Expense).filter(Expense.id == eid).first()
+                if exp and exp.recurrence_id:
+                    rec_id = exp.recurrence_id
+                    db.query(Expense).filter(Expense.recurrence_id == rec_id).delete()
+                    from app.models import Recurrence
+                    db.query(Recurrence).filter(Recurrence.id == rec_id).delete()
+            db.commit()
+        else:
+            db.query(Expense).filter(Expense.id.in_(id_list)).delete(synchronize_session=False)
+            db.commit()
+        return RedirectResponse(url=(next or '/money/expenses'), status_code=HTTP_303_SEE_OTHER)
+    finally:
+        db.close()
+
 @router.get("/incomes")
 async def incomes_index(request: Request):
     if not get_current_user(request):
@@ -396,6 +459,14 @@ async def incomes_index(request: Request):
                 apt_pm_map[apt.id] = float(pm.percent or 0.0) if pm else 0.0
             else:
                 apt_pm_map[apt.id] = 0.0
+            # build a mapping for apartment to its PM percent and PM id for client-side default behavior (used in JS)
+            apt_pm_map = {}
+            for apt in apartments:
+                if apt.property_manager_id:
+                    pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
+                    apt_pm_map[apt.id] = {"percent": float(pm.percent or 0.0) if pm else 0.0, "pm_id": pm.id if pm else None}
+                else:
+                    apt_pm_map[apt.id] = {"percent": 0.0, "pm_id": None}
         return templates.TemplateResponse("incomes_index.html", {"request": request, "incomes": incomes, "apartments": apartments, "platforms": platforms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "next": next_url})
     finally:
         db.close()
@@ -655,5 +726,69 @@ async def delete_income(request: Request, income_id: int, user=Depends(admin_req
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
+    finally:
+        db.close()
+
+
+@router.post('/incomes/bulk_edit')
+async def bulk_edit_incomes(request: Request, ids: str = Form(...), notes: str = Form(None), net_amount: float = Form(None), gross_amount: float = Form(None), apartment_id: int = Form(None), vat_percent: float = Form(None), associated_pm_id: int = Form(None), pm_percent: float = Form(None), date: str = Form(None), platform_id: int = Form(None), user=Depends(admin_required)):
+    await log_request_form(request)
+    db = SessionLocal()
+    try:
+        id_list = [int(x) for x in ids.split(',') if x]
+        occs = db.query(Income).filter(Income.id.in_(id_list)).all()
+        for o in occs:
+            if notes is not None and notes != '':
+                o.notes = notes
+            if gross_amount is not None:
+                o.gross_amount = float(gross_amount)
+            if vat_percent is not None:
+                o.vat_percent = float(vat_percent)
+            if net_amount is not None:
+                o.net_amount = float(net_amount)
+            else:
+                # recompute net if gross/vat provided or leave as is
+                if gross_amount is not None and vat_percent is not None:
+                    o.net_amount = round(float(gross_amount) * (1 - (float(vat_percent) / 100.0)), 2)
+            if pm_percent is not None:
+                o.pm_percent = float(pm_percent)
+            if apartment_id:
+                o.apartment_id = apartment_id
+            if associated_pm_id:
+                o.associated_pm_id = associated_pm_id
+            if platform_id:
+                o.platform_id = platform_id
+            if date:
+                o.date = date
+            # recompute pm_amount and net_after_pm
+            o.pm_amount = round(float(o.gross_amount) * (float(o.pm_percent or 0.0) / 100.0), 2)
+            o.net_after_pm = round((float(o.net_amount or 0.0)) - o.pm_amount, 2)
+            db.add(o)
+        db.commit()
+        return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
+    finally:
+        db.close()
+
+
+@router.post('/incomes/bulk_delete')
+async def bulk_delete_incomes(request: Request, ids: str = Form(...), delete_series_if_present: str = Form(None), next: str = Form(None), user=Depends(admin_required)):
+    await log_request_form(request)
+    db = SessionLocal()
+    try:
+        id_list = [int(x) for x in ids.split(',') if x]
+        if delete_series_if_present:
+            # if requested, delete entire series for each selected income that has recurrence
+            for iid in id_list:
+                inc = db.query(Income).filter(Income.id == iid).first()
+                if inc and inc.recurrence_id:
+                    rec_id = inc.recurrence_id
+                    db.query(Income).filter(Income.recurrence_id == rec_id).delete()
+                    from app.models import Recurrence
+                    db.query(Recurrence).filter(Recurrence.id == rec_id).delete()
+            db.commit()
+        else:
+            db.query(Income).filter(Income.id.in_(id_list)).delete(synchronize_session=False)
+            db.commit()
+        return RedirectResponse(url=(next or '/money/incomes'), status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
