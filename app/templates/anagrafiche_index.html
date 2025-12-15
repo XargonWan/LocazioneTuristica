@@ -12,6 +12,7 @@
           <div class="d-flex">
             <input class="form-control me-2" name="first_name" placeholder="Nome" required>
             <input class="form-control me-2" name="last_name" placeholder="Cognome" required>
+            <input class="form-control me-2" name="percent" placeholder="% PM" type="number" step="0.01">
             <button class="btn btn-primary">Aggiungi</button>
           </div>
         </form>
@@ -30,7 +31,10 @@
                   </small>
                 </div>
               </div>
-              <span>
+                <div class="text-end me-2">
+                  <small class="text-muted">Versato PM (anno): <strong>€{{ '%.2f'|format(pm_totals.get(pm.id, 0.0)) }}</strong></small>
+                </div>
+                <span>
                 {% if request.session.get('role') == 'admin' %}
                 <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/property-manager/{{ pm.id }}/edit">Modifica</a>
                 {% endif %}

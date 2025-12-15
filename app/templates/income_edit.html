@@ -7,6 +7,7 @@
       <div class="card-body">
         <h5 class="card-title">Modifica Entrata</h5>
         <form method="post" action="/money/incomes/{{ income.id }}/edit">
+          <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <div class="mb-3">
             <label>Data</label>
             <input type="date" name="date" class="form-control" value="{{ income.date }}" required>
@@ -78,9 +79,10 @@
             </ul>
           </div>
           <button class="btn btn-primary" type="submit">Salva</button>
-          <a class="btn btn-secondary ms-2" href="/money/incomes">Annulla</a>
+          <a class="btn btn-secondary ms-2" href="{{ next if next is defined and next else '/money/incomes' }}">Annulla</a>
         </form>
         <form method="post" action="/money/incomes/{{ income.id }}/delete" class="mt-2">
+          <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <button class="btn btn-danger" type="submit">Elimina</button>
         </form>
       </div>

@@ -7,6 +7,7 @@
       <div class="card-body">
         <h5 class="card-title">Modifica Spesa</h5>
         <form method="post" action="/money/expenses/{{ expense.id }}/edit">
+          <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <div class="mb-3">
             <label>Data</label>
             <input type="date" name="date" class="form-control" value="{{ expense.date }}" required>
@@ -16,8 +17,16 @@
             <input type="number" name="gross_amount" step="0.01" class="form-control" value="{{ expense.gross_amount }}" required>
           </div>
           <div class="mb-3">
+            <label>Importo netto</label>
+            <input type="number" name="net_amount" step="0.01" class="form-control" value="{{ expense.net_amount }}">
+          </div>
+          <div class="mb-3">
             <label>IVA (%)</label>
             <input type="number" name="vat_percent" step="0.01" class="form-control" value="{{ expense.vat_percent }}">
+          </div>
+          <div class="mb-3">
+            <label>Percentuale PM (%)</label>
+            <input type="number" name="pm_percent" step="0.01" class="form-control" value="{{ expense.pm_percent if expense.pm_percent is not none else 0.0 }}">
           </div>
           <div class="mb-3">
             <label>Appartamento</label>
@@ -50,6 +59,14 @@
             <label>Note</label>
             <textarea name="notes" class="form-control">{{ expense.notes }}</textarea>
           </div>
+          <div class="mb-3">
+            <label>PM amount</label>
+            <input class="form-control" value="€{{ '%.2f'|format(expense.pm_amount if expense.pm_amount is not none else 0.0) }}" disabled>
+          </div>
+          <div class="mb-3">
+            <label>Net after PM</label>
+            <input class="form-control" value="€{{ '%.2f'|format(expense.net_after_pm if expense.net_after_pm is not none else 0.0) }}" disabled>
+          </div>
           {% if expense.recurrence_id %}
           <div class="mb-3">
             <label>Applica modifiche a</label>
@@ -77,6 +94,7 @@
           <a class="btn btn-secondary ms-2" href="/money/expenses">Annulla</a>
         </form>
         <form method="post" action="/money/expenses/{{ expense.id }}/delete" class="mt-2">
+          <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <button class="btn btn-danger" type="submit">Elimina</button>
         </form>
       </div>

@@ -109,6 +109,13 @@ Le seguenti funzionalità sono state implementate nell'MVP:
 - Aggiungere tests e Docker Compose di produzione
 - Implementare job pianificati o gestione ricorrenze (cron/celery)
  - Implementare l'edit scoping per voci ricorrenti (già implementato: ora è possibile scegliere se modificare solo la singola occorrenza o tutta la serie quando si modifica un'entrata/spesa con ricorrenza)
+ 
+## Bug fixes (Dec 2025)
+- Corretto il problema per cui i PM non venivano mostrati nelle Entrate: i template ora usano i campi serializzati (`associated_pm_name`, `pm_percent`, `pm_amount`) passati dal router invece di accedere a relazioni ORM non disponibili.
+- Ripristinata la formattazione della vista mensile (rimosse chiusure HTML duplicate e riportate le classi `table table-sm` per ripristinare i bordi dei mesi dopo Gennaio).
+- Fixata la visualizzazione delle modali di conferma eliminazione (spostate fuori dalle modali figlie per evitare overlay/backdrop che oscuravano la conferma).
+- Titoli dei dettagli (Entrata/Spesa) ora mostrano la causale/note se presente: `Dettagli Spesa <note>` (fallback a `#id`).
+- Aggiunti test `pytest` che verificano il rendering dei template per prevenire regressioni su questi punti.
 
 
 

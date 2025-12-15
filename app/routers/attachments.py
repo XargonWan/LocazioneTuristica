@@ -5,12 +5,12 @@ from starlette.status import HTTP_303_SEE_OTHER
 from fastapi.templating import Jinja2Templates
 import os
 from app.db import SessionLocal
-from app.auth_utils import admin_required
+from app.auth_utils import admin_required, get_current_user
 from app.models import Attachment
 from app.utils import get_setting
 
 router = APIRouter(prefix="/attachments")
-templates = Jinja2Templates(directory="app/templates")
+from app.main import templates
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./data/attachments")
 if not os.path.exists(UPLOAD_DIR):

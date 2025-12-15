@@ -105,6 +105,9 @@ async def overview(request: Request):
         incomes = db.query(Income).all()
         expenses = db.query(Expense).all()
         months = {m: {'income': 0.0, 'expense': 0.0} for m in range(1, 13)}
+        # track amount due to PM per month separately from expenses
+        for m in months:
+            months[m]['pm_due'] = 0.0
         for inc in incomes:
             try:
                 d = datetime.strptime(inc.date, '%Y-%m-%d')
@@ -112,6 +115,7 @@ async def overview(request: Request):
                 continue
             if d.year == year:
                 months[d.month]['income'] += float(inc.gross_amount)
+                months[d.month]['pm_due'] += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
         for exp in expenses:
             try:
                 d = datetime.strptime(exp.date, '%Y-%m-%d')
@@ -120,6 +124,9 @@ async def overview(request: Request):
             if d.year == year:
                 months[d.month]['expense'] += float(exp.gross_amount)
         months_list = [{'month': m, 'income': months[m]['income'], 'expense': months[m]['expense']} for m in sorted(months.keys())]
+        # include pm_due in months list for template
+        for m in months_list:
+            m['pm_due'] = months[m['month']]['pm_due']
         # Build per-month entries lists for incomes and expenses so the template can render details
         entries_by_month = {m: [] for m in range(1, 13)}
         for inc in incomes:
@@ -128,18 +135,43 @@ async def overview(request: Request):
             except Exception:
                 continue
             if d.year == year:
-                entries_by_month[d.month].append({'type': 'income', 'date': d, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id})
+                associated_pm_name = None
+                try:
+                    if inc.associated_pm:
+                        associated_pm_name = f"{inc.associated_pm.first_name} {inc.associated_pm.last_name}"
+                except Exception:
+                    associated_pm_name = None
+                entries_by_month[d.month].append({'type': 'income', 'date': d, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(inc, 'pm_amount', 0.0) or 0.0)})
+                # include net_amount so overview modals can display netto computed from VAT
+                entries_by_month[d.month][-1]['net_amount'] = float(getattr(inc, 'net_amount', 0.0) or 0.0)
         for exp in expenses:
             try:
                 d = datetime.strptime(exp.date, '%Y-%m-%d')
             except Exception:
                 continue
             if d.year == year:
-                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id})
-        # Sort entries in each month by date descending (most recent first)
+                associated_pm_name = None
+                try:
+                    if exp.associated_pm:
+                        associated_pm_name = f"{exp.associated_pm.first_name} {exp.associated_pm.last_name}"
+                except Exception:
+                    associated_pm_name = None
+                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(exp, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(exp, 'pm_amount', 0.0) or 0.0), 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)})
+        # Sort entries in each month by date ascending (earliest first)
         for m in range(1,13):
-            entries_by_month[m].sort(key=lambda x: x['date'], reverse=True)
-        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'entries_by_month': entries_by_month})
+            entries_by_month[m].sort(key=lambda x: x['date'], reverse=False)
+        total_income = sum([m['income'] for m in months_list])
+        total_expense = sum([m['expense'] for m in months_list])
+        pm_paid_total = 0.0
+        for inc in incomes:
+            try:
+                d = datetime.strptime(inc.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year == year:
+                pm_paid_total += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+        pm_paid_pct = round((pm_paid_total / total_income) * 100, 2) if total_income > 0 else 0.0
+        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
     finally:
         db.close()
 

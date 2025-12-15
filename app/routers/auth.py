@@ -11,7 +11,7 @@ from app.auth_utils import admin_required, get_current_user
 
 router = APIRouter(prefix="/auth")
 
-templates = Jinja2Templates(directory="app/templates")
+from app.main import templates
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 

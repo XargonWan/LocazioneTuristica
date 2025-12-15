@@ -9,7 +9,7 @@ from app.auth_utils import admin_required, get_current_user
 from app.debug import log_request_form
 
 router = APIRouter(prefix="/money")
-templates = Jinja2Templates(directory="app/templates")
+from app.main import templates
 
 
 @router.get("/expenses")
@@ -22,17 +22,63 @@ async def expenses_index(request: Request):
         apartments = db.query(Apartment).all()
         pms = db.query(PropertyManager).all()
         attachments = db.query(Attachment).all()
-        return templates.TemplateResponse("expenses_index.html", {"request": request, "expenses": expenses, "apartments": apartments, "pms": pms})
+        # Build a mapping from expense id to attachments list for templates
+        attachments_by_expense = {}
+        if expenses:
+            expense_ids = [e.id for e in expenses if e.id]
+            if expense_ids:
+                ats = db.query(Attachment).filter(Attachment.expense_id.in_(expense_ids)).all()
+                for a in ats:
+                    attachments_by_expense.setdefault(a.expense_id, []).append(a)
+        default_apartment_id = None
+        default_associated_pm_id = None
+        default_pm_percent = 0.0
+        if apartments and len(apartments) == 1:
+            default_apartment_id = apartments[0].id
+            if apartments[0].property_manager_id:
+                default_associated_pm_id = apartments[0].property_manager_id
+                pm = db.query(PropertyManager).filter(PropertyManager.id == default_associated_pm_id).first()
+                if pm:
+                    default_pm_percent = float(pm.percent or 0.0)
+        # build a mapping for apartment to its PM percent for client-side default behavior
+        apt_pm_map = {}
+        for apt in apartments:
+            if apt.property_manager_id:
+                pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
+                apt_pm_map[apt.id] = float(pm.percent or 0.0) if pm else 0.0
+            else:
+                apt_pm_map[apt.id] = 0.0
+        next_url = request.query_params.get('next') or None
+        # Prefetch associated PM names and numeric fields to avoid lazy-loading in templates
+        for e in expenses:
+            try:
+                if e.associated_pm:
+                    e.associated_pm_name = f"{e.associated_pm.first_name} {e.associated_pm.last_name}"
+                else:
+                    e.associated_pm_name = None
+                e.pm_percent = float(e.pm_percent or 0.0)
+                e.pm_amount = float(e.pm_amount or 0.0)
+                e.net_after_pm = float(e.net_after_pm or 0.0)
+            except Exception:
+                e.associated_pm_name = None
+                e.pm_percent = float(getattr(e, 'pm_percent', 0.0) or 0.0)
+                e.pm_amount = float(getattr(e, 'pm_amount', 0.0) or 0.0)
+                e.net_after_pm = float(getattr(e, 'net_after_pm', 0.0) or 0.0)
+        return templates.TemplateResponse("expenses_index.html", {"request": request, "expenses": expenses, "apartments": apartments, "pms": pms, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url})
     finally:
         db.close()
 
 
 @router.post("/expenses/add")
-async def add_expense(request: Request, gross_amount: float = Form(...), vat_percent: float = Form(22.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), notes: str = Form(''), user=Depends(admin_required)):
+async def add_expense(request: Request, gross_amount: float = Form(...), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), notes: str = Form(''), next: str = Form(None), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
-        net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+        # Compute net_amount from gross if not explicitly provided
+        if net_amount is None:
+            net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+        else:
+            net_amount = round(float(net_amount), 2)
         # Create recurrence record if needed
         recurrence_id = None
         if recurrence and recurrence in ("monthly", "yearly"):
@@ -41,7 +87,19 @@ async def add_expense(request: Request, gross_amount: float = Form(...), vat_per
             db.add(r)
             db.commit()
             recurrence_id = r.id
-        e = Expense(apartment_id=apartment_id, date=date, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=recurrence_id, notes=notes)
+        # Default associated_pm_id to the apartment's PM if not provided
+        if not associated_pm_id and apartment_id:
+            apt = db.query(Apartment).filter(Apartment.id == apartment_id).first()
+            if apt and apt.property_manager_id:
+                associated_pm_id = apt.property_manager_id
+        # If we have an associated PM but no pm_percent provided (or zero), use the PM default
+        if associated_pm_id and (pm_percent is None or float(pm_percent) == 0.0):
+            pm = db.query(PropertyManager).filter(PropertyManager.id == associated_pm_id).first()
+            if pm:
+                pm_percent = float(pm.percent or 0.0)
+        pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
+        net_after_pm = round(net_amount - pm_amount, 2)
+        e = Expense(apartment_id=apartment_id, date=date, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, pm_percent=pm_percent, pm_amount=pm_amount, net_after_pm=net_after_pm, associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=recurrence_id, notes=notes)
         db.add(e)
         db.commit()
         # Attach any selected attachments
@@ -53,6 +111,37 @@ async def add_expense(request: Request, gross_amount: float = Form(...), vat_per
                     a.expense_id = e.id
                     db.add(a)
             db.commit()
+        # If this expense has a recurrence, materialize future occurrences for the next months/years
+        if recurrence_id:
+            try:
+                from datetime import datetime
+                def add_months(dt, months):
+                    # months can be positive
+                    y = dt.year + (dt.month - 1 + months) // 12
+                    m = (dt.month - 1 + months) % 12 + 1
+                    d = min(dt.day, 28)  # keep safe day to avoid invalid dates (28 ensures feb safeness)
+                    return datetime(y, m, d)
+
+                start = datetime.strptime(date, '%Y-%m-%d')
+                # if monthly, create next 11 months; if yearly, create next 3 years
+                if recurrence in ('monthly',):
+                    for i in range(1, 12):
+                        nd = add_months(start, i).strftime('%Y-%m-%d')
+                        new_e = Expense(apartment_id=apartment_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=recurrence_id, notes=notes)
+                        db.add(new_e)
+                    db.commit()
+                elif recurrence in ('yearly',):
+                    for i in range(1, 4):
+                        nd = start.replace(year=start.year + i).strftime('%Y-%m-%d')
+                        new_e = Expense(apartment_id=apartment_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=recurrence_id, notes=notes)
+                        db.add(new_e)
+                    db.commit()
+            except Exception:
+                # don't break the add flow if materialization fails
+                pass
+        # Redirect back to provided next url if present, otherwise default to expenses list
+        if next:
+            return RedirectResponse(url=next, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url="/money/expenses", status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -70,12 +159,13 @@ async def edit_expense_get(request: Request, expense_id: int):
         pms = db.query(PropertyManager).all()
         companies = db.query(Company).all()
         attached = db.query(Attachment).filter(Attachment.expense_id == e.id).all()
-        return templates.TemplateResponse('expense_edit.html', {"request": request, "expense": e, "apartments": apartments, "pms": pms, "companies": companies, "attached": attached})
+        next_url = request.query_params.get('next') or None
+        return templates.TemplateResponse('expense_edit.html', {"request": request, "expense": e, "apartments": apartments, "pms": pms, "companies": companies, "attached": attached, "next": next_url})
     finally:
         db.close()
 
 @router.api_route('/expenses/{expense_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), notes: str = Form(''), apply_to: str = Form('single'), user=Depends(admin_required)):
+async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(...), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), notes: str = Form(''), apply_to: str = Form('single'), next: str = Form(None), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -89,6 +179,9 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
                 o.gross_amount = gross_amount
                 o.vat_percent = vat_percent
                 o.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+                o.pm_percent = pm_percent
+                o.pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
+                o.net_after_pm = round(o.net_amount - o.pm_amount, 2)
                 o.date = date
                 o.apartment_id = apartment_id
                 o.associated_pm_id = associated_pm_id
@@ -109,7 +202,13 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
                 e.recurrence_id = None
             e.gross_amount = gross_amount
             e.vat_percent = vat_percent
-            e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+            if net_amount is None:
+                e.net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+            else:
+                e.net_amount = round(float(net_amount), 2)
+            e.pm_percent = pm_percent
+            e.pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
+            e.net_after_pm = round(e.net_amount - e.pm_amount, 2)
             e.date = date
             e.apartment_id = apartment_id
             e.associated_pm_id = associated_pm_id
@@ -117,6 +216,9 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
             e.notes = notes
             db.add(e)
             db.commit()
+        # Redirect to next if provided
+        if next:
+            return RedirectResponse(url=next, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -127,9 +229,23 @@ async def delete_expense(request: Request, expense_id: int, user=Depends(admin_r
     db = SessionLocal()
     try:
         e = db.query(Expense).filter(Expense.id == expense_id).first()
+        form = await request.form()
+        delete_scope = (form.get('delete_scope') if form else 'single')
+        next_url = (form.get('next') if form else None)
         if e:
-            db.delete(e)
-            db.commit()
+            if delete_scope == 'series' and e.recurrence_id:
+                # delete all occurrences with the same recurrence_id
+                rec_id = e.recurrence_id
+                db.query(Expense).filter(Expense.recurrence_id == rec_id).delete()
+                # also remove recurrence metadata
+                from app.models import Recurrence
+                db.query(Recurrence).filter(Recurrence.id == rec_id).delete()
+                db.commit()
+            else:
+                db.delete(e)
+                db.commit()
+        if next_url:
+            return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -144,7 +260,47 @@ async def incomes_index(request: Request):
         apartments = db.query(Apartment).all()
         platforms = db.query(Platform).all()
         attachments = db.query(Attachment).all()
-        return templates.TemplateResponse("incomes_index.html", {"request": request, "incomes": incomes, "apartments": apartments, "platforms": platforms})
+        attachments_by_income = {}
+        if incomes:
+            income_ids = [inc.id for inc in incomes if inc.id]
+            if income_ids:
+                ats = db.query(Attachment).filter(Attachment.income_id.in_(income_ids)).all()
+                for a in ats:
+                    attachments_by_income.setdefault(a.income_id, []).append(a)
+        # Determine defaults for new income form
+        default_apartment_id = None
+        default_associated_pm_id = None
+        default_pm_percent = 0.0
+        if apartments and len(apartments) == 1:
+            default_apartment_id = apartments[0].id
+            if apartments[0].property_manager_id:
+                default_associated_pm_id = apartments[0].property_manager_id
+                pm = db.query(PropertyManager).filter(PropertyManager.id == default_associated_pm_id).first()
+                if pm:
+                    default_pm_percent = float(pm.percent or 0.0)
+        next_url = request.query_params.get('next') or None
+        # Prefetch associated PM names and numeric fields to avoid lazy-loading in templates
+        for inc in incomes:
+            try:
+                if inc.associated_pm:
+                    inc.associated_pm_name = f"{inc.associated_pm.first_name} {inc.associated_pm.last_name}"
+                else:
+                    inc.associated_pm_name = None
+                inc.pm_percent = float(inc.pm_percent or 0.0)
+                inc.pm_amount = float(inc.pm_amount or 0.0)
+            except Exception:
+                inc.associated_pm_name = None
+                inc.pm_percent = float(getattr(inc, 'pm_percent', 0.0) or 0.0)
+                inc.pm_amount = float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+        # build a mapping for apartment to its PM percent for client-side default behavior (used in JS)
+        apt_pm_map = {}
+        for apt in apartments:
+            if apt.property_manager_id:
+                pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
+                apt_pm_map[apt.id] = float(pm.percent or 0.0) if pm else 0.0
+            else:
+                apt_pm_map[apt.id] = 0.0
+        return templates.TemplateResponse("incomes_index.html", {"request": request, "incomes": incomes, "apartments": apartments, "platforms": platforms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "next": next_url})
     finally:
         db.close()
 
@@ -155,6 +311,25 @@ async def add_income(request: Request, gross_amount: float = Form(...), vat_perc
     db = SessionLocal()
     try:
         net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+        # If an apartment is provided but no associated_pm_id, set it to the apartment's pm
+        if not associated_pm_id and apartment_id:
+            apt = db.query(Apartment).filter(Apartment.id == apartment_id).first()
+            if apt and apt.property_manager_id:
+                associated_pm_id = apt.property_manager_id
+                # if pm_percent not provided (0), use property manager default
+                pm = db.query(PropertyManager).filter(PropertyManager.id == associated_pm_id).first()
+                if pm and (pm_percent is None or float(pm_percent) == 0.0):
+                    pm_percent = float(pm.percent or 0.0)
+        # If an apartment is provided but no associated_pm_id, set it to the apartment's pm
+        if not associated_pm_id and apartment_id:
+            apt = db.query(Apartment).filter(Apartment.id == apartment_id).first()
+            if apt and apt.property_manager_id:
+                associated_pm_id = apt.property_manager_id
+                # if pm_percent not provided (0), use property manager default
+                pm = db.query(PropertyManager).filter(PropertyManager.id == associated_pm_id).first()
+                if pm and (pm_percent is None or float(pm_percent) == 0.0):
+                    pm_percent = float(pm.percent or 0.0)
+        # Now compute pm_amount based on (maybe updated) pm_percent
         pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
         net_after_pm = round(net_amount - pm_amount, 2)
         # Create recurrence if needed
@@ -177,6 +352,36 @@ async def add_income(request: Request, gross_amount: float = Form(...), vat_perc
                     a.income_id = e.id
                     db.add(a)
             db.commit()
+        # If this income has a recurrence, materialize future occurrences (monthly/yearly)
+        if recurrence_id:
+            try:
+                from datetime import datetime
+                def add_months(dt, months):
+                    y = dt.year + (dt.month - 1 + months) // 12
+                    m = (dt.month - 1 + months) % 12 + 1
+                    d = min(dt.day, 28)
+                    return datetime(y, m, d)
+
+                start = datetime.strptime(date, '%Y-%m-%d')
+                if recurrence in ('monthly',):
+                    for i in range(1, 12):
+                        nd = add_months(start, i).strftime('%Y-%m-%d')
+                        new_e = Income(apartment_id=apartment_id, platform_id=platform_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, recurrence_id=recurrence_id, notes=notes)
+                        db.add(new_e)
+                    db.commit()
+                elif recurrence in ('yearly',):
+                    for i in range(1, 4):
+                        nd = start.replace(year=start.year + i).strftime('%Y-%m-%d')
+                        new_e = Income(apartment_id=apartment_id, platform_id=platform_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, recurrence_id=recurrence_id, notes=notes)
+                        db.add(new_e)
+                    db.commit()
+            except Exception:
+                pass
+        # Respect next redirect if provided
+        form = await request.form()
+        next_url = form.get('next') if form else None
+        if next_url:
+            return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url="/money/incomes", status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -194,7 +399,8 @@ async def edit_income_get(request: Request, income_id: int):
         platforms = db.query(Platform).all()
         pms = db.query(PropertyManager).all()
         attached = db.query(Attachment).filter(Attachment.income_id == e.id).all()
-        return templates.TemplateResponse('income_edit.html', {"request": request, "income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached})
+        next_url = request.query_params.get('next') or None
+        return templates.TemplateResponse('income_edit.html', {"request": request, "income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached, "next": next_url})
     finally:
         db.close()
 
@@ -245,6 +451,11 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
             e.notes = notes
             db.add(e)
             db.commit()
+        # Redirect to next if provided
+        form = await request.form()
+        next_url = form.get('next') if form else None
+        if next_url:
+            return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -255,9 +466,21 @@ async def delete_income(request: Request, income_id: int, user=Depends(admin_req
     db = SessionLocal()
     try:
         e = db.query(Income).filter(Income.id == income_id).first()
+        form = await request.form()
+        delete_scope = (form.get('delete_scope') if form else 'single')
+        next_url = (form.get('next') if form else None)
         if e:
-            db.delete(e)
-            db.commit()
+            if delete_scope == 'series' and e.recurrence_id:
+                rec_id = e.recurrence_id
+                db.query(Income).filter(Income.recurrence_id == rec_id).delete()
+                from app.models import Recurrence
+                db.query(Recurrence).filter(Recurrence.id == rec_id).delete()
+                db.commit()
+            else:
+                db.delete(e)
+                db.commit()
+        if next_url:
+            return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()

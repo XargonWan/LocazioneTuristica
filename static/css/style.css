@@ -225,6 +225,13 @@ html[data-theme="dark"] nav, body.dark nav, html[data-theme="dark"] header, body
   color: var(--text) !important;
 }
 
+/* Toggler styling: ensure the hamburger icon is visible and has contrast in dark/light themes */
+.navbar-toggler {
+  border: 1px solid var(--border);
+  background: transparent;
+}
+.navbar-toggler svg { stroke: var(--text); }
+
 /* Breadcrumbs, pagination & alerts */
 html[data-theme="dark"] .breadcrumb, body.dark .breadcrumb,
 html[data-theme="dark"] .pagination, body.dark .pagination,

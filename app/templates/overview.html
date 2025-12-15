@@ -3,10 +3,10 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center">
   <h1>Rendiconto</h1>
-  <div>
+    <div>
     {% if request.session.get('role') == 'admin' %}
-    <a href="/money/incomes" class="btn btn-success me-2">+ Entrata</a>
-    <a href="/money/expenses" class="btn btn-danger">+ Spesa</a>
+    <a href="/money/incomes?next=/overview" class="btn btn-success me-2">+ Entrata</a>
+    <a href="/money/expenses?next=/overview" class="btn btn-danger">+ Spesa</a>
     {% endif %}
   </div>
 </div>
@@ -15,91 +15,79 @@
   <div class="col-md-8">
     <div class="card mb-3">
       <div class="card-body">
-        <h5>Riepilogo anno {{ year }}</h5>
-        <ul class="list-group">
-          {% for m in months %}
-          <li class="list-group-item">
-            <div class="d-flex justify-content-between align-items-start">
-              <div>
-                {% set net = (m.income - m.expense) %}
-                {% if net > 0 %}
-                  {% set net_class = 'net-positive' %}
-                {% elif net < 0 %}
-                  {% set net_class = 'net-negative' %}
-                {% else %}
-                  {% set net_class = 'net-zero' %}
-                {% endif %}
-                <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
-                <div>
-                  <small class="text-success">Inc: €{{ '%.2f'|format(m.income) }}</small>
-                  <small class="text-danger ms-3">Exp: €{{ '%.2f'|format(m.expense) }}</small>
-                </div>
-              </div>
-            </div>
-            <div class="mt-2 month-details" id="month-details-{{ m.month }}">
-              <div>
-                <div class="table-responsive">
-                  <table class="table table-sm table-borderless mb-0">
-                    <thead>
-                      <tr>
-                        <th scope="col">Causale</th>
-                        <th scope="col">Data</th>
-                        <th scope="col" class="text-end">Importo</th>
-                        <th scope="col">&nbsp;</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for item in entries_by_month[m.month] %}
-                        <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
-                          <td>{{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}</td>
-                          <td>{{ item.date|format_date }}</td>
-                          <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
-                          <td class="text-end">
-                            {% if request.session.get('role') == 'admin' %}
-                              {% if item.type == 'income' %}
-                                <a class="btn btn-sm btn-outline-secondary" href="/money/incomes/{{ item.id }}/edit">Modifica</a>
+                    <div class="card-body">
+                      <h5>Riepilogo anno {{ year }}</h5>
+                      <ul class="list-group">
+                        {% for m in months %}
+                        <li class="list-group-item">
+                          <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                              {% set net = (m.income - m.expense) %}
+                              {% if net > 0 %}
+                                {% set net_class = 'net-positive' %}
+                              {% elif net < 0 %}
+                                {% set net_class = 'net-negative' %}
                               {% else %}
-                                <a class="btn btn-sm btn-outline-secondary" href="/money/expenses/{{ item.id }}/edit">Modifica</a>
+                                {% set net_class = 'net-zero' %}
                               {% endif %}
-                            {% endif %}
-                          </td>
-                        </tr>
-                      {% else %}
-                        <tr><td colspan="4">Nessuna voce</td></tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="card mb-3">
-      <div class="card-body">
-        <h5>Controlli</h5>
-        <p class="text-muted">Filtra per anno o appartamento (in sviluppo)</p>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="row mt-4">
-  <div class="col-12">
-    <div class="card">
-      <div class="card-body">
-        <h5>Panoramica per anno</h5>
-        <div class="d-flex align-items-center mb-3">
-          <label class="me-2 mb-0">Anno</label>
-          <select id="overview-year" class="form-select form-select-sm w-auto me-3">
-          </select>
-          <button id="overview-refresh" class="btn btn-sm btn-outline-primary">Aggiorna</button>
-        </div>
-        <div class="chart-container mb-3" style="height:300px;">
-          <canvas id="overview-chart"></canvas>
+                              <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
+                              <div>
+                                <small class="text-success">Inc: €{{ '%.2f'|format(m.income) }}</small>
+                                <small class="text-danger ms-3">Exp: €{{ '%.2f'|format(m.expense) }}</small>
+                                {% if m.pm_due and m.pm_due > 0 %}
+                                  <small class="ms-3 text-danger">PM dovuto: €{{ '%.2f'|format(m.pm_due) }}</small>
+                                {% endif %}
+                              </div>
+                            </div>
+                          </div>
+                          {% if entries_by_month[m.month] %}
+                          <div class="mt-2 month-details" id="month-details-{{ m.month }}">
+                            <div>
+                              <div class="table-responsive">
+                                <table class="table table-sm mb-0">
+                                  <thead>
+                                    <tr>
+                                      <th scope="col">Causale</th>
+                                      <th scope="col">Data</th>
+                                      <th scope="col" class="text-end">Importo</th>
+                                      <th scope="col">&nbsp;</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {% for item in entries_by_month[m.month] %}
+                                      <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
+                                        <td>{{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}</td>
+                                        <td>{{ item.date|format_date }}</td>
+                                        <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
+                                        <td class="text-end">
+                                          {% if request.session.get('role') == 'admin' %}
+                                            {% if item.type == 'income' %}
+                                              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#incomeModal-{{ item.id }}">Dettagli</button>
+                                            {% else %}
+                                              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#expenseModal-{{ item.id }}">Dettagli</button>
+                                            {% endif %}
+                                          {% endif %}
+                                        </td>
+                                      </tr>
+                                    {% endfor %}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+                          {% else %}
+                            {# no entries for this month: do not render the table or 'Nessuna voce' row #}
+                          {% endif %}
+                        </li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+        <div id="overview-totals" class="mb-3">
+          <div class="d-flex gap-3">
+            <div><strong>Totale Entrate:</strong> <span id="tot-inc">€{{ '%.2f'|format(total_income) }}</span></div>
+            <div><strong>Totale Spese:</strong> <span id="tot-exp">€{{ '%.2f'|format(total_expense) }}</span></div>
+            <div><strong>Versato ai PM:</strong> <span id="tot-pm">€{{ '%.2f'|format(pm_paid_total) }}</span> (<span id="tot-pm-pct">{{ '%.2f'|format(pm_paid_pct) }}%</span>)</div>
+          </div>
         </div>
         <div class="table-responsive">
           <table id="overview-table" class="table table-sm table-borderless">
@@ -118,4 +106,111 @@
     </div>
   </div>
 </div>
+        {# Now render per-item modals outside tables to ensure valid HTML and Bootstrap functionality #}
+        <div id="overview-modals">
+          {% for m in months %}
+            {% for item in entries_by_month[m.month] %}
+              {% if request.session.get('role') == 'admin' %}
+                {% if item.type == 'expense' %}
+                <div class="modal fade" id="expenseModal-{{ item.id }}" tabindex="-1" aria-labelledby="expenseModalLabel-{{ item.id }}" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title">Dettagli Spesa {{ item.notes if item.notes else ('#' ~ item.id) }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                      </div>
+                            <div class="modal-body">
+                              <p><strong>Data:</strong> {{ item.date|format_date }}</p>
+                              <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
+                              {% if item.type == 'income' and item.net_amount is defined %}
+                                <p><strong>Importo netto:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
+                              {% endif %}
+                              <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
+                              {% if item.associated_pm_name %}
+                                <p><strong>Associata a (PM):</strong> {{ item.associated_pm_name }}</p>
+                                <p><strong>Percentuale PM:</strong> {{ (item.pm_percent if item.pm_percent is not none else 0) }}%</p>
+                                <p><strong>PM amount:</strong> €{{ '%.2f'|format(item.pm_amount if item.pm_amount is not none else 0.0) }}</p>
+                                <p><strong>Netto dopo PM:</strong> €{{ '%.2f'|format(item.net_after_pm if item.net_after_pm is not none else 0.0) }}</p>
+                              {% endif %}
+                            </div>
+                      <div class="modal-footer">
+                        <a class="btn btn-primary" href="/money/expenses/{{ item.id }}/edit?next=/overview">Modifica</a>
+                        <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineOvExp-{{ item.id }}">Elimina</button>
+                        <div class="collapse mt-2" id="delInlineOvExp-{{ item.id }}">
+                          <div class="card card-body">
+                            <form method="post" action="/money/expenses/{{ item.id }}/delete">
+                              <div class="form-check">
+                                <input class="form-check-input" type="radio" name="delete_scope" id="del_single_ov_exp_{{ item.id }}" value="single" checked>
+                                <label class="form-check-label" for="del_single_ov_exp_{{ item.id }}">Solo questa voce (predefinito)</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="radio" name="delete_scope" id="del_series_ov_exp_{{ item.id }}" value="series">
+                                <label class="form-check-label" for="del_series_ov_exp_{{ item.id }}">Tutta la serie</label>
+                              </div>
+                              <input type="hidden" name="next" value="/overview">
+                              <div class="mt-3 text-end">
+                                <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
+                                <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#delInlineOvExp-{{ item.id }}">Annulla</button>
+                              </div>
+                            </form>
+                          </div>
+                        </div>
+                        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Chiudi</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {% elif item.type == 'income' %}
+                <div class="modal fade" id="incomeModal-{{ item.id }}" tabindex="-1" aria-labelledby="incomeModalLabel-{{ item.id }}" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title">Dettagli Entrata {{ item.notes if item.notes else ('#' ~ item.id) }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                      </div>
+                      <div class="modal-body">
+                        <p><strong>Data:</strong> {{ item.date|format_date }}</p>
+                        <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
+                                {% if item.type == 'income' and item.net_amount is defined %}
+                                  <p><strong>Importo netto:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
+                                {% endif %}
+                        <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
+                        {% if item.associated_pm_name %}
+                          <p><strong>Associata a (PM):</strong> {{ item.associated_pm_name }}</p>
+                          <p><strong>Percentuale PM:</strong> {{ (item.pm_percent if item.pm_percent is not none else 0) }}%</p>
+                          <p><strong>PM amount:</strong> €{{ '%.2f'|format(item.pm_amount if item.pm_amount is not none else 0.0) }}</p>
+                        {% endif %}
+                      </div>
+                      <div class="modal-footer">
+                        <a class="btn btn-primary" href="/money/incomes/{{ item.id }}/edit?next=/overview">Modifica</a>
+                        <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineOvInc-{{ item.id }}">Elimina</button>
+                        <div class="collapse mt-2" id="delInlineOvInc-{{ item.id }}">
+                          <div class="card card-body">
+                            <form method="post" action="/money/incomes/{{ item.id }}/delete">
+                              <div class="form-check">
+                                <input class="form-check-input" type="radio" name="delete_scope" id="del_single_ov_inc_{{ item.id }}" value="single" checked>
+                                <label class="form-check-label" for="del_single_ov_inc_{{ item.id }}">Solo questa voce (predefinito)</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="radio" name="delete_scope" id="del_series_ov_inc_{{ item.id }}" value="series">
+                                <label class="form-check-label" for="del_series_ov_inc_{{ item.id }}">Tutta la serie</label>
+                              </div>
+                              <input type="hidden" name="next" value="/overview">
+                              <div class="mt-3 text-end">
+                                <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
+                                <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#delInlineOvInc-{{ item.id }}">Annulla</button>
+                              </div>
+                            </form>
+                          </div>
+                        </div>
+                        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Chiudi</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
 {% endblock %}

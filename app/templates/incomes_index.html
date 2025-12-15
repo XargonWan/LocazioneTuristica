@@ -5,6 +5,7 @@
 <div class="card">
   <div class="card-body">
     <form method="post" action="/money/incomes/add">
+      <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
         <label>Data</label>
         <input type="date" name="date" class="form-control" required>
@@ -17,9 +18,9 @@
         <label>Appartamento</label>
         <select name="apartment_id" class="form-control">
           <option value="">---</option>
-          {% for apt in apartments %}
-          <option value="{{ apt.id }}">{{ apt.name }}</option>
-          {% endfor %}
+            {% for a in apartments %}
+            <option value="{{ a.id }}" {% if apartments|length == 1 %}selected{% endif %}>{{ a.name }}</option>
+            {% endfor %}
         </select>
       </div>
       <div class="mb-3">
@@ -28,6 +29,15 @@
           <option value="">---</option>
           {% for p in platforms %}
           <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>Associata a (PM)</label>
+        <select name="associated_pm_id" class="form-control">
+          <option value="">---</option>
+          {% for pm in pms %}
+          <option value="{{ pm.id }}" {% if default_associated_pm_id is defined and pm.id == default_associated_pm_id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -45,7 +55,7 @@
       </div>
       <div class="mb-3">
         <label>Percentuale PM (%)</label>
-        <input type="number" name="pm_percent" step="0.01" class="form-control" value="0.0">
+        <input type="number" name="pm_percent" step="0.01" class="form-control" value="{{ default_pm_percent if default_pm_percent is defined else 0.0 }}">
       </div>
       <div class="mb-3">
         <label>Ricorrenza</label>
@@ -60,7 +70,7 @@
         <textarea name="notes" class="form-control"></textarea>
       </div>
       <div class="mb-3">
-        <a class="btn btn-secondary" href="/money/incomes">Annulla</a>
+        <a class="btn btn-secondary" href="{{ next if next is defined and next else '/money/incomes' }}">Annulla</a>
         <button class="btn btn-primary">Aggiungi entrata</button>
       </div>
     </form>
@@ -69,19 +79,126 @@
       {% for e in incomes %}
       <li class="list-group-item d-flex justify-content-between align-items-center">
         <div>
-          <div>{{ e.date|format_date }} - €{{ e.gross_amount }} (netto: {{ e.net_amount }})</div>
+          <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }})</div>
           <small class="text-muted">{{ e.notes }}</small>
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}
-          <a class="btn btn-sm btn-outline-secondary" href="/money/incomes/{{ e.id }}/edit">Modifica</a>
+          <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#incomeModal-{{ e.id }}">Dettagli</button>
           {% endif %}
         </span>
       </li>
       {% else %}
       <li class="list-group-item">Nessuna entrata</li>
       {% endfor %}
+      {% for e in incomes %}
+        {% if request.session.get('role') == 'admin' %}
+        <div class="modal fade" id="incomeModal-{{ e.id }}" tabindex="-1" aria-labelledby="incomeModalLabel-{{ e.id }}" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Dettagli Entrata {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+              </div>
+              <div class="modal-body">
+                <p><strong>Data:</strong> {{ e.date|format_date }}</p>
+                <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(e.gross_amount) }}</p>
+                <p><strong>Importo netto:</strong> €{{ '%.2f'|format(e.net_amount) }}</p>
+                {% if e.associated_pm_name %}
+                  <p><strong>Associata a (PM):</strong> {{ e.associated_pm_name }}</p>
+                  <p><strong>PM percentuale:</strong> {{ '%.2f'|format(e.pm_percent) }}%</p>
+                  <p><strong>PM importo:</strong> €{{ '%.2f'|format(e.pm_amount) }}</p>
+                {% endif %}
+                <p><strong>Note:</strong> {{ e.notes or '-' }}</p>
+                <p><strong>Allegati:</strong></p>
+                <ul>
+                  {% for a in (attachments_by_income.get(e.id) if attachments_by_income else []) %}
+                    <li><a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a></li>
+                  {% else %}
+                    <li>Nessun allegato</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="modal-footer">
+                <a class="btn btn-primary" href="/money/incomes/{{ e.id }}/edit">Modifica</a>
+                <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineIncome-{{ e.id }}">Elimina</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="collapse" id="delInlineIncome-{{ e.id }}">
+          <div class="card card-body mt-2">
+            <form method="post" action="/money/incomes/{{ e.id }}/delete">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="delete_scope" id="del_single_inc_inline_{{ e.id }}" value="single" checked>
+                <label class="form-check-label" for="del_single_inc_inline_{{ e.id }}">Solo questa voce (predefinito)</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="delete_scope" id="del_series_inc_inline_{{ e.id }}" value="series">
+                <label class="form-check-label" for="del_series_inc_inline_{{ e.id }}">Tutta la serie</label>
+              </div>
+              <input type="hidden" name="next" value="{{ next if next is defined and next else '/money/incomes' }}">
+              <div class="mt-3 text-end">
+                <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
+                <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#delInlineIncome-{{ e.id }}">Annulla</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
     </ul>
   </div>
 </div>
 {% endblock %}
+
+  {# Delete confirmation modals rendered outside the main list to avoid nested modals/backdrop issues #}
+  {% for e in incomes %}
+    {% if request.session.get('role') == 'admin' %}
+    <div class="modal fade" id="deleteConfirmIncome-{{ e.id }}" tabindex="-1" aria-labelledby="deleteConfirmIncomeLabel-{{ e.id }}" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="deleteConfirmIncomeLabel-{{ e.id }}">Elimina Entrata {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+          </div>
+          <div class="modal-body">
+            <p>Vuoi eliminare solo questa occorrenza o tutta la serie ricorrente?</p>
+            <form method="post" action="/money/incomes/{{ e.id }}/delete">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="delete_scope" id="del_single_inc_{{ e.id }}" value="single" checked>
+                <label class="form-check-label" for="del_single_inc_{{ e.id }}">Solo questa voce (predefinito)</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="delete_scope" id="del_series_inc_{{ e.id }}" value="series">
+                <label class="form-check-label" for="del_series_inc_{{ e.id }}">Tutta la serie</label>
+              </div>
+              <input type="hidden" name="next" value="{{ next if next is defined and next else '/money/incomes' }}">
+              <div class="mt-3 text-end">
+                <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+
+<script>
+  // Auto-fill PM percent when apartment selection changes (uses apt_pm_map passed from router)
+  document.addEventListener('DOMContentLoaded', function(){
+    const aptPmMap = {{ apt_pm_map|tojson if apt_pm_map is defined else '{}' }};
+    const aptSelect = document.querySelector('select[name="apartment_id"]');
+    const pmPercentInput = document.querySelector('input[name="pm_percent"]');
+    if (aptSelect && pmPercentInput) {
+      aptSelect.addEventListener('change', () => {
+        const id = aptSelect.value;
+        const pct = (aptPmMap && id && aptPmMap[id]) ? aptPmMap[id] : 0.0;
+        pmPercentInput.value = pct;
+      });
+    }
+  });
+</script>

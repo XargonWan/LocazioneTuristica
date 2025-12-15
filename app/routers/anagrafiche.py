@@ -7,10 +7,12 @@ from app.db import SessionLocal
 from app.auth_utils import get_current_user
 from app.auth_utils import admin_required, auth_required
 from app.models import PropertyManager, Apartment, Company, Platform
+from app.models import Income
+from datetime import datetime
 from app.debug import log_request_form
 
 router = APIRouter(prefix="/anagrafiche")
-templates = Jinja2Templates(directory="app/templates")
+from app.main import templates
 
 
 @router.get("")
@@ -23,17 +25,44 @@ async def index(request: Request):
         apts = db.query(Apartment).all()
         companies = db.query(Company).all()
         platforms = db.query(Platform).all()
-        return templates.TemplateResponse("anagrafiche_index.html", {"request": request, "pms": pms, "apts": apts, "companies": companies, "platforms": platforms})
+        # Compute PM totals for current year (sum of pm_amount or computed from gross_amount if pm_amount missing)
+        pm_totals = {}
+        # Build PM mapping
+        pm_map = {pm.id: pm for pm in pms}
+        incomes = db.query(Income).all()
+        year = int(request.query_params.get('year') or datetime.now().year)
+        for inc in incomes:
+            try:
+                d = datetime.strptime(inc.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year != year:
+                continue
+            # Determine which PM this income applies to
+            pm_id = inc.associated_pm_id
+            if not pm_id and inc.apartment:
+                pm_id = getattr(inc.apartment, 'property_manager_id', None)
+            if not pm_id:
+                continue
+            # pm_amount may be stored; if not, compute via PM percent
+            pm_amount = float(inc.pm_amount or 0.0)
+            if pm_amount == 0.0:
+                pm = pm_map.get(pm_id)
+                if pm:
+                    pm_pct = float(pm.percent or 0.0)
+                    pm_amount = float(inc.gross_amount or 0.0) * (pm_pct / 100.0)
+            pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
+        return templates.TemplateResponse("anagrafiche_index.html", {"request": request, "pms": pms, "apts": apts, "companies": companies, "platforms": platforms, "pm_totals": pm_totals})
     finally:
         db.close()
 
 
 @router.post("/property-manager/add")
-async def add_pm(request: Request, first_name: str = Form(...), last_name: str = Form(...), user=Depends(admin_required)):
+async def add_pm(request: Request, first_name: str = Form(...), last_name: str = Form(...), percent: float = Form(0.0), user=Depends(admin_required)):
     db = SessionLocal()
     await log_request_form(request)
     try:
-        pm = PropertyManager(first_name=first_name, last_name=last_name)
+        pm = PropertyManager(first_name=first_name, last_name=last_name, percent=percent)
         db.add(pm)
         db.commit()
         return RedirectResponse(url="/anagrafiche", status_code=HTTP_303_SEE_OTHER)
@@ -91,13 +120,32 @@ async def edit_pm_get(request: Request, pm_id: int):
             return RedirectResponse(url='/anagrafiche')
         apartments = db.query(Apartment).all()
         pms = db.query(PropertyManager).all()
-        return templates.TemplateResponse('pm_edit.html', {"request": request, "pm": pm, "apartments": apartments, "pms": pms})
+        # compute PM totals for the year
+        pm_total = 0.0
+        from app.models import Income
+        from datetime import datetime
+        incomes = db.query(Income).all()
+        year = int(request.query_params.get('year') or datetime.now().year)
+        for inc in incomes:
+            try:
+                d = datetime.strptime(inc.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year != year:
+                continue
+            pm_id_for_income = inc.associated_pm_id or (inc.apartment.property_manager_id if inc.apartment else None)
+            if pm_id_for_income == pm.id:
+                pm_amount = float(inc.pm_amount or 0.0)
+                if pm_amount == 0.0:
+                    pm_amount = float(inc.gross_amount or 0.0) * (float(pm.percent or 0.0) / 100.0)
+                pm_total += pm_amount
+        return templates.TemplateResponse('pm_edit.html', {"request": request, "pm": pm, "apartments": apartments, "pms": pms, "pm_total": pm_total})
     finally:
         db.close()
 
 
 @router.api_route('/property-manager/{pm_id}/edit', methods=["POST", "PUT", "PATCH"])
-async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...), last_name: str = Form(...), apartment_ids: List[int] = Form(None), user=Depends(admin_required)):
+async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...), last_name: str = Form(...), apartment_ids: List[int] = Form(None), percent: float = Form(0.0), user=Depends(admin_required)):
     await log_request_form(request)
     # debug log to help find Method Not Allowed issues
     try:
@@ -111,6 +159,7 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
             return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
         pm.first_name = first_name
         pm.last_name = last_name
+        pm.percent = percent
         # Update apartment associations: set property_manager_id for selected apartments
         if apartment_ids is not None:
             # Clear apartments currently assigned to this PM not selected now

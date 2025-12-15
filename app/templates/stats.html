@@ -5,18 +5,106 @@
 <div class="card">
   <div class="card-body">
     <p>Grafici e report verranno mostrati qui (Chart.js)</p>
-    <div class="mb-3">
-      <label>Anno</label>
-      <select id="year-select" class="form-control">
-        <option value="{{ (year if year else now) | default(2025) }}">{{ (year if year else now) | default(2025) }}</option>
-      </select>
+    <div class="mb-3 row g-3">
+      <div class="col-md-3">
+        <label>Anno</label>
+        <select id="year-select" class="form-control">
+          <option value="{{ (year if year else now) | default(2025) }}">{{ (year if year else now) | default(2025) }}</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label>Proprietario (PM)</label>
+        <select id="pm-select" class="form-control">
+          <option value="">Tutti</option>
+          {% for pm in pms %}
+            <option value="{{ pm.id }}">{{ pm.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label>Azienda</label>
+        <select id="company-select" class="form-control">
+          <option value="">Tutte</option>
+          {% for c in companies %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label>Piattaforma</label>
+        <select id="platform-select" class="form-control">
+          <option value="">Tutte</option>
+          {% for pl in platforms %}
+            <option value="{{ pl.id }}">{{ pl.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div id="stats-totals" class="mb-3 d-flex gap-3">
+      <div><strong>Totale Entrate:</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
+      <div><strong>Totale Spese:</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
+      <div><strong>Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
     </div>
     <canvas id="monthly-chart"></canvas>
   </div>
 </div>
+<div class="mt-4 card">
+  <div class="card-body">
+    <h4>Per anagrafica</h4>
+    <div class="row">
+      <div class="col-md-4">
+        <h5>Property Managers</h5>
+        <ul class="list-group">
+          {% for pm in pms %}
+            <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('pm-select').value='{{ pm.id }}'; reloadSelections();">
+              <div>{{ pm.name }}</div>
+              <div>
+                <span class="badge bg-primary">€{{ (pm_totals[pm.id] if pm.id in pm_totals else 0)|float|round(2) }}</span>
+              </div>
+            </li>
+          {% else %}
+            <li class="list-group-item">Nessun property manager</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <h5>Aziende</h5>
+        <ul class="list-group">
+          {% for c in companies %}
+            <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('company-select').value='{{ c.id }}'; reloadSelections();">
+              <div>{{ c.name }}</div>
+              <div><span class="badge bg-secondary">€{{ (company_totals[c.id] if c.id in company_totals else 0)|float|round(2) }}</span></div>
+            </li>
+          {% else %}
+            <li class="list-group-item">Nessuna azienda</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-md-4">
+        <h5>Piattaforme</h5>
+        <ul class="list-group">
+          {% for pl in platforms %}
+            <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('platform-select').value='{{ pl.id }}'; reloadSelections();">
+              <div>{{ pl.name }}</div>
+              <div><span class="badge bg-success">€{{ (platform_totals[pl.id] if pl.id in platform_totals else 0)|float|round(2) }}</span></div>
+            </li>
+          {% else %}
+            <li class="list-group-item">Nessuna piattaforma</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
-  async function loadChart(year){
-    const res = await fetch(`/api/stats/monthly?year=${year}`)
+    async function loadChart(year, pm=null, comp=null, pl=null){
+      const incomeColor = (getComputedStyle(document.documentElement).getPropertyValue('--income-color') || '#1fa64a').trim();
+      const expenseColor = (getComputedStyle(document.documentElement).getPropertyValue('--expense-color') || '#d9534f').trim();
+    let qs = `year=${year}`;
+    if(pm) qs += `&pm_id=${pm}`;
+    if(comp) qs += `&company_id=${comp}`;
+    if(pl) qs += `&platform_id=${pl}`;
+    const res = await fetch(`/api/stats/monthly?${qs}`)
     const data = await res.json();
     const labels = data.data.map(d => d.month)
     const income = data.data.map(d => d.income)
@@ -28,18 +116,36 @@
       data: {
         labels: labels,
         datasets: [
-          { label: 'Entrate', data: income, backgroundColor: 'rgba(75, 192, 192, 0.6)' },
-          { label: 'Spese', data: expense, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+          { label: 'Entrate', data: income, backgroundColor: incomeColor },
+          { label: 'Spese', data: expense, backgroundColor: expenseColor }
         ]
       },
       options: { responsive: true }
     })
-  }
+      // update totals DOM
+      const totals = data.totals || {};
+      document.getElementById('stats-inc').textContent = `€${Number(totals.income || 0).toFixed(2)}`;
+      document.getElementById('stats-exp').textContent = `€${Number(totals.expense || 0).toFixed(2)}`;
+      document.getElementById('stats-pm').textContent = `€${Number(totals.pm_paid || 0).toFixed(2)}`;
+      document.getElementById('stats-pm-pct').textContent = `${Number(totals.pm_percent || 0).toFixed(2)}%`;
+    }
   document.addEventListener('DOMContentLoaded', async () => {
     const year = new Date().getFullYear()
     await loadChart(year)
-    document.getElementById('year-select').addEventListener('change', (ev) => {
-      loadChart(ev.target.value)
+    const pmSel = document.getElementById('pm-select');
+    const compSel = document.getElementById('company-select');
+    const plSel = document.getElementById('platform-select');
+    function reloadSelections(){
+      const yr = document.getElementById('year-select').value;
+      const pm = pmSel.value;
+      const comp = compSel.value;
+      const pl = plSel.value;
+      loadChart(yr, pm, comp, pl)
+    }
+    document.getElementById('year-select').addEventListener('change', (ev) => { reloadSelections() })
+    pmSel.addEventListener('change', (ev) => { reloadSelections() })
+    compSel.addEventListener('change', (ev) => { reloadSelections() })
+    plSel.addEventListener('change', (ev) => { reloadSelections() })
     })
   })
 </script>

@@ -5,6 +5,7 @@
 <div class="card">
   <div class="card-body">
     <form method="post" action="/money/expenses/add">
+      <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
         <label>Data</label>
         <input type="date" name="date" class="form-control" required>
@@ -14,11 +15,15 @@
         <input type="number" name="gross_amount" step="0.01" class="form-control" required>
       </div>
       <div class="mb-3">
+        <label>Importo netto</label>
+        <input type="number" name="net_amount" step="0.01" class="form-control" value="" placeholder="Lascia vuoto per calcolo automatico">
+      </div>
+      <div class="mb-3">
         <label>Appartamento</label>
-        <select name="apartment_id" class="form-control">
+          <select name="apartment_id" class="form-control">
           <option value="">---</option>
           {% for apt in apartments %}
-          <option value="{{ apt.id }}">{{ apt.name }}</option>
+          <option value="{{ apt.id }}" {% if apartments|length == 1 %}selected{% endif %}>{{ apt.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -35,13 +40,17 @@
         <select name="associated_pm_id" class="form-control">
           <option value="">---</option>
           {% for pm in pms %}
-          <option value="{{ pm.id }}">{{ pm.first_name }} {{ pm.last_name }}</option>
+          <option value="{{ pm.id }}" {% if default_associated_pm_id is defined and pm.id == default_associated_pm_id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="mb-3">
         <label>IVA (%)</label>
         <input type="number" name="vat_percent" step="0.01" class="form-control" value="22.0">
+      </div>
+      <div class="mb-3">
+        <label>Percentuale PM (%)</label>
+        <input type="number" name="pm_percent" step="0.01" class="form-control" value="{{ default_pm_percent if default_pm_percent is defined else 0.0 }}">
       </div>
       <div class="mb-3">
         <label>Ricorrenza</label>
@@ -56,7 +65,7 @@
         <textarea name="notes" class="form-control"></textarea>
       </div>
       <div class="mb-3">
-        <a class="btn btn-secondary" href="/money/expenses">Annulla</a>
+        <a class="btn btn-secondary" href="{{ next if next is defined and next else '/money/expenses' }}">Annulla</a>
         <button class="btn btn-primary">Aggiungi spesa</button>
       </div>
     </form>
@@ -65,19 +74,141 @@
       {% for e in expenses %}
       <li class="list-group-item d-flex justify-content-between align-items-center">
         <div>
-          <div>{{ e.date|format_date }} - €{{ e.gross_amount }} (netto: {{ e.net_amount }} )</div>
+            <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }} ) - PM: €{{ '%.2f'|format(e.pm_amount if e.pm_amount is not none else 0.0) }} - Netto dopo PM: €{{ '%.2f'|format(e.net_after_pm if e.net_after_pm is not none else 0.0) }} </div>
           <small class="text-muted">{{ e.notes }}</small>
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}
-          <a class="btn btn-sm btn-outline-secondary" href="/money/expenses/{{ e.id }}/edit">Modifica</a>
+          <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#expenseModal-{{ e.id }}">Dettagli</button>
           {% endif %}
         </span>
       </li>
+            <!-- Modal for expense details -->
+            {% if request.session.get('role') == 'admin' %}
+            <div class="modal fade" id="expenseModal-{{ e.id }}" tabindex="-1" aria-labelledby="expenseModalLabel-{{ e.id }}" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="expenseModalLabel-{{ e.id }}">Dettagli Spesa {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                  </div>
+                  <div class="modal-body">
+                    <p><strong>Data:</strong> {{ e.date|format_date }}</p>
+                    <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(e.gross_amount) }}</p>
+                    <p><strong>IVA:</strong> {{ e.vat_percent }}%</p>
+                    <p><strong>Importo netto:</strong> €{{ '%.2f'|format(e.net_amount) }}</p>
+                    <p><strong>Appartamento:</strong> {{ e.apartment.name if e.apartment else '-' }}</p>
+                    {% if e.associated_pm_name %}
+                      <p><strong>Associata a (PM):</strong> {{ e.associated_pm_name }}</p>
+                      <p><strong>Percentuale PM:</strong> {{ '%.2f'|format(e.pm_percent) }}%</p>
+                      <p><strong>PM importo:</strong> €{{ '%.2f'|format(e.pm_amount) }}</p>
+                      <p><strong>Netto dopo PM:</strong> €{{ '%.2f'|format(e.net_after_pm) }}</p>
+                    {% endif %}
+                    <p><strong>Associata a (Ditta):</strong> {{ e.associated_company.company_name if e.associated_company else '-' }}</p>
+                    <p><strong>Note:</strong> {{ e.notes or '-' }}</p>
+                    <p><strong>Allegati:</strong></p>
+                    <ul>
+                      {% for a in (attachments_by_expense.get(e.id) if attachments_by_expense else []) %}
+                        <li><a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a></li>
+                      {% else %}
+                        <li>Nessun allegato</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  <div class="modal-footer">
+                    <a class="btn btn-primary" href="/money/expenses/{{ e.id }}/edit">Modifica</a>
+                    <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineExp-{{ e.id }}">Elimina</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="collapse" id="delInlineExp-{{ e.id }}">
+              <div class="card card-body mt-2">
+                <form method="post" action="/money/expenses/{{ e.id }}/delete">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="delete_scope" id="del_single_inline_{{ e.id }}" value="single" checked>
+                    <label class="form-check-label" for="del_single_inline_{{ e.id }}">Solo questa voce (predefinito)</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="delete_scope" id="del_series_inline_{{ e.id }}" value="series">
+                    <label class="form-check-label" for="del_series_inline_{{ e.id }}">Tutta la serie</label>
+                  </div>
+                  <input type="hidden" name="next" value="{{ next if next is defined and next else '/money/expenses' }}">
+                  <div class="mt-3 text-end">
+                    <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
+                    <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#delInlineExp-{{ e.id }}">Annulla</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            {% endif %}
       {% else %}
       <li class="list-group-item">Nessuna spesa</li>
       {% endfor %}
     </ul>
   </div>
 </div>
+      {# Render delete confirmation modals outside the main flow to avoid nested modal/backdrop issues #}
+      {% for e in expenses %}
+        {% if request.session.get('role') == 'admin' %}
+        <div class="modal fade" id="deleteConfirmExpense-{{ e.id }}" tabindex="-1" aria-labelledby="deleteConfirmExpenseLabel-{{ e.id }}" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="deleteConfirmExpenseLabel-{{ e.id }}">Elimina Spesa {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+              </div>
+              <div class="modal-body">
+                <p>Vuoi eliminare solo questa occorrenza o tutta la serie ricorrente?</p>
+                <form method="post" action="/money/expenses/{{ e.id }}/delete">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="delete_scope" id="del_single_{{ e.id }}" value="single" checked>
+                    <label class="form-check-label" for="del_single_{{ e.id }}">Solo questa voce (predefinito)</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="delete_scope" id="del_series_{{ e.id }}" value="series">
+                    <label class="form-check-label" for="del_series_{{ e.id }}">Tutta la serie</label>
+                  </div>
+                  <input type="hidden" name="next" value="{{ next if next is defined and next else '/money/expenses' }}">
+                  <div class="mt-3 text-end">
+                    <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+<script>
+  // Automatically set pm_percent when apartment selection changes
+  document.addEventListener('DOMContentLoaded', function(){
+    const aptPmMap = {{ apt_pm_map|tojson if apt_pm_map is defined else '{}' }};
+    const aptSelect = document.querySelector('select[name="apartment_id"]');
+    const pmPercentInput = document.querySelector('input[name="pm_percent"]');
+    const grossInput = document.querySelector('input[name="gross_amount"]');
+    const vatInput = document.querySelector('input[name="vat_percent"]');
+    const netInput = document.querySelector('input[name="net_amount"]');
+    if (aptSelect && pmPercentInput) {
+      aptSelect.addEventListener('change', () => {
+        const id = aptSelect.value;
+        const pct = (aptPmMap && id && aptPmMap[id]) ? aptPmMap[id] : 0.0;
+        pmPercentInput.value = pct;
+      });
+    }
+    // Auto-calc net when gross or vat change if net input is empty
+    function calcNet(){
+      if (!grossInput || !vatInput || !netInput) return;
+      if (netInput.value && netInput.value.trim() !== '') return; // user provided net
+      const gross = parseFloat(grossInput.value) || 0.0;
+      const vat = parseFloat(vatInput.value) || 0.0;
+      const net = gross * (1 - (vat / 100.0));
+      netInput.value = net ? net.toFixed(2) : '';
+    }
+    if (grossInput) grossInput.addEventListener('input', calcNet);
+    if (vatInput) vatInput.addEventListener('input', calcNet);
+  });
+</script>
 {% endblock %}
