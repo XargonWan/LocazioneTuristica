@@ -55,6 +55,15 @@
             <label>Note</label>
             <textarea name="notes" class="form-control">{{ income.notes }}</textarea>
           </div>
+          <div class="mb-3">
+            <label>Ricorrenza</label>
+            <select name="recurrence" class="form-control">
+              <option value="none">Mai</option>
+              <option value="monthly">Mensile</option>
+              <option value="yearly">Annuale</option>
+            </select>
+            <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future.</small>
+          </div>
           {% if income.recurrence_id %}
           <div class="mb-3">
             <label>Applica modifiche a</label>

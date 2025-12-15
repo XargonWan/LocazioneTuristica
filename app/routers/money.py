@@ -140,9 +140,48 @@ async def add_expense(request: Request, gross_amount: float = Form(...), net_amo
                 # don't break the add flow if materialization fails
                 pass
         # Redirect back to provided next url if present, otherwise default to expenses list
-        if next:
-            return RedirectResponse(url=next, status_code=HTTP_303_SEE_OTHER)
-        return RedirectResponse(url="/money/expenses", status_code=HTTP_303_SEE_OTHER)
+            # If the form included a recurrence and the entry is not part of a series, create it now (defensive)
+            try:
+                form = await request.form()
+                rec2 = form.get('recurrence') if form else None
+                if rec2 and rec2 in ('monthly', 'yearly') and not e.recurrence_id:
+                    from app.models import Recurrence
+                    r = Recurrence(type=rec2, start_date=date, notes=notes)
+                    db.add(r)
+                    db.commit()
+                    print('Created Recurrence id (defensive expense):', r.id)
+                    e.recurrence_id = r.id
+                    db.add(e)
+                    db.commit()
+                    try:
+                        from datetime import datetime
+                        def add_months(dt, months):
+                            y = dt.year + (dt.month - 1 + months) // 12
+                            m = (dt.month - 1 + months) % 12 + 1
+                            d = min(dt.day, 28)
+                            return datetime(y, m, d)
+                        start = datetime.strptime(date, '%Y-%m-%d')
+                        if rec2 in ('monthly',):
+                            for i in range(1, 12):
+                                nd = add_months(start, i).strftime('%Y-%m-%d')
+                                print('Materialize expense date:', nd)
+                                new_e = Expense(apartment_id=apartment_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=r.id, notes=notes)
+                                db.add(new_e)
+                            db.commit()
+                        elif rec2 in ('yearly',):
+                            for i in range(1, 4):
+                                nd = start.replace(year=start.year + i).strftime('%Y-%m-%d')
+                                new_e = Expense(apartment_id=apartment_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=r.id, notes=notes)
+                                db.add(new_e)
+                            db.commit()
+                    except Exception:
+                        pass
+            except Exception as ex:
+                print('Materialize incomes failed:', ex)
+            # Redirect back to provided next url if present, otherwise default to expenses list
+            if next:
+                return RedirectResponse(url=next, status_code=HTTP_303_SEE_OTHER)
+            return RedirectResponse(url="/money/expenses", status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
 
@@ -165,13 +204,70 @@ async def edit_expense_get(request: Request, expense_id: int):
         db.close()
 
 @router.api_route('/expenses/{expense_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(...), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), notes: str = Form(''), apply_to: str = Form('single'), next: str = Form(None), user=Depends(admin_required)):
+async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(...), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), notes: str = Form(''), recurrence: str = Form('none'), apply_to: str = Form('single'), next: str = Form(None), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
         e = db.query(Expense).filter(Expense.id == expense_id).first()
         if not e:
             return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
+        # Allow converting a single expense to a recurring series if recurrence is provided on edit
+        form = await request.form()
+        # debug: log incoming form keys when converting to recurrence
+        try:
+            print('EDIT EXPENSE FORM KEYS:', list(form.keys()))
+        except Exception as ex:
+            print('Materialize expenses failed:', ex)
+            pass
+        recurrence = form.get('recurrence') if form else None
+        print('EDIT EXPENSE recurrence value:', recurrence)
+        created_recurrence = False
+        # Determine effective net amount to use for materialized occurrences
+        if net_amount is None:
+            effective_net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+        else:
+            effective_net_amount = round(float(net_amount), 2)
+        if not e.recurrence_id and recurrence and recurrence in ('monthly', 'yearly'):
+            print('Entering recurrence creation block')
+            from app.models import Recurrence
+            r = Recurrence(type=recurrence, start_date=date, notes=notes)
+            db.add(r)
+            db.commit()
+            print('Created Recurrence id', r.id)
+            e.recurrence_id = r.id
+            print('Setting expense.recurrence_id to', r.id)
+            db.add(e)
+            db.commit()
+            # materialize future occurrences
+            try:
+                from datetime import datetime
+                def add_months(dt, months):
+                    # months can be positive
+                    y = dt.year + (dt.month - 1 + months) // 12
+                    m = (dt.month - 1 + months) % 12 + 1
+                    d = min(dt.day, 28)
+                    return datetime(y, m, d)
+                start = datetime.strptime(date, '%Y-%m-%d')
+                if recurrence in ('monthly',):
+                    for i in range(1, 12):
+                        nd = add_months(start, i).strftime('%Y-%m-%d')
+                        print('Materialize expense date (edit) i=%s:' % i, nd)
+                        new_e = Expense(apartment_id=apartment_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=effective_net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(effective_net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=r.id, notes=notes)
+                        db.add(new_e)
+                    db.commit()
+                elif recurrence in ('yearly',):
+                    for i in range(1, 4):
+                        nd = start.replace(year=start.year + i).strftime('%Y-%m-%d')
+                        print('Materialize expense date (edit) i=%s:' % i, nd)
+                        new_e = Expense(apartment_id=apartment_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=effective_net_amount, pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(effective_net_amount - (round(gross_amount * (pm_percent / 100.0), 2)), 2), associated_pm_id=associated_pm_id, associated_company_id=associated_company_id, recurrence_id=r.id, notes=notes)
+                        db.add(new_e)
+                    db.commit()
+            except Exception as ex:
+                import traceback
+                print('Materialize expense (edit) failed:', ex)
+                traceback.print_exc()
+            created_recurrence = True
+
         # If this expense belongs to a recurrence and the user wants to apply to the whole series, update all occurrences
         if e.recurrence_id and apply_to == 'series':
             occs = db.query(Expense).filter(Expense.recurrence_id == e.recurrence_id).all()
@@ -198,7 +294,7 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
             db.commit()
         else:
             # Apply only to single occurrence: unlink from recurrence and update fields
-            if e.recurrence_id and apply_to == 'single':
+            if e.recurrence_id and apply_to == 'single' and not created_recurrence:
                 e.recurrence_id = None
             e.gross_amount = gross_amount
             e.vat_percent = vat_percent
@@ -405,13 +501,53 @@ async def edit_income_get(request: Request, income_id: int):
         db.close()
 
 @router.api_route('/incomes/{income_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), notes: str = Form(''), apply_to: str = Form('single'), user=Depends(admin_required)):
+async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), notes: str = Form(''), recurrence: str = Form('none'), apply_to: str = Form('single'), user=Depends(admin_required)):
     await log_request_form(request)
+    print('EDIT INCOME POST CALLED for', income_id)
     db = SessionLocal()
     try:
         e = db.query(Income).filter(Income.id == income_id).first()
         if not e:
               return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
+        # Handle recurrence conversion: if entry was not recurring and user selected a recurrence, create it
+        # 'recurrence' parameter is now provided by FastAPI via Form; use that
+        print('EDIT INCOME recurrence value (param):', recurrence)
+        print('Current e.recurrence_id:', e.recurrence_id)
+        print('Cond checks:', not e.recurrence_id, bool(recurrence), recurrence in ('monthly','yearly'))
+        created_recurrence = False
+        if not e.recurrence_id and recurrence and recurrence in ('monthly', 'yearly'):
+            from app.models import Recurrence
+            r = Recurrence(type=recurrence, start_date=date, notes=notes)
+            db.add(r)
+            db.commit()
+            e.recurrence_id = r.id
+            db.add(e)
+            db.commit()
+            # materialize future occurrences for the new recurrence
+            try:
+                from datetime import datetime
+                def add_months(dt, months):
+                    y = dt.year + (dt.month - 1 + months) // 12
+                    m = (dt.month - 1 + months) % 12 + 1
+                    d = min(dt.day, 28)
+                    return datetime(y, m, d)
+                start = datetime.strptime(date, '%Y-%m-%d')
+                if recurrence in ('monthly',):
+                    for i in range(1, 12):
+                        nd = add_months(start, i).strftime('%Y-%m-%d')
+                        new_i = Income(apartment_id=apartment_id, platform_id=platform_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=round(gross_amount * (1 - (vat_percent / 100.0)), 2), pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(round(gross_amount * (1 - (vat_percent / 100.0)), 2) - round(gross_amount * (pm_percent / 100.0), 2), 2), associated_pm_id=associated_pm_id, recurrence_id=r.id, notes=notes)
+                        db.add(new_i)
+                    db.commit()
+                elif recurrence in ('yearly',):
+                    for i in range(1, 4):
+                        nd = start.replace(year=start.year + i).strftime('%Y-%m-%d')
+                        new_i = Income(apartment_id=apartment_id, platform_id=platform_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=round(gross_amount * (1 - (vat_percent / 100.0)), 2), pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(round(gross_amount * (1 - (vat_percent / 100.0)), 2) - round(gross_amount * (pm_percent / 100.0), 2), 2), associated_pm_id=associated_pm_id, recurrence_id=r.id, notes=notes)
+                        db.add(new_i)
+                    db.commit()
+            except Exception:
+                pass
+            created_recurrence = True
+
         # Handle editing apply scope
         if e.recurrence_id and apply_to == 'series':
             occs = db.query(Income).filter(Income.recurrence_id == e.recurrence_id).all()
@@ -436,7 +572,8 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
                 db.add(r)
             db.commit()
         else:
-            if e.recurrence_id and apply_to == 'single':
+            # If we just created a recurrence above, don't unlink it when apply_to is 'single'
+            if e.recurrence_id and apply_to == 'single' and not created_recurrence:
                 e.recurrence_id = None
             e.gross_amount = gross_amount
             e.vat_percent = vat_percent
@@ -451,8 +588,44 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
             e.notes = notes
             db.add(e)
             db.commit()
-        # Redirect to next if provided
-        form = await request.form()
+        # If the form included a recurrence and the entry is not part of a series, create it now (defensive)
+        try:
+            form = await request.form()
+            rec2 = form.get('recurrence') if form else None
+            if rec2 and rec2 in ('monthly', 'yearly') and not e.recurrence_id:
+                from app.models import Recurrence
+                r = Recurrence(type=rec2, start_date=date, notes=notes)
+                db.add(r)
+                db.commit()
+                print('Created Recurrence id (defensive):', r.id)
+                e.recurrence_id = r.id
+                db.add(e)
+                db.commit()
+                # materialize occurrences
+                try:
+                    from datetime import datetime
+                    def add_months(dt, months):
+                        y = dt.year + (dt.month - 1 + months) // 12
+                        m = (dt.month - 1 + months) % 12 + 1
+                        d = min(dt.day, 28)
+                        return datetime(y, m, d)
+                    start = datetime.strptime(date, '%Y-%m-%d')
+                    if rec2 in ('monthly',):
+                        for i in range(1, 12):
+                            nd = add_months(start, i).strftime('%Y-%m-%d')
+                            new_i = Income(apartment_id=apartment_id, platform_id=platform_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=round(gross_amount * (1 - (vat_percent / 100.0)), 2), pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(round(gross_amount * (1 - (vat_percent / 100.0)), 2) - round(gross_amount * (pm_percent / 100.0), 2), 2), associated_pm_id=associated_pm_id, recurrence_id=r.id, notes=notes)
+                            db.add(new_i)
+                        db.commit()
+                    elif rec2 in ('yearly',):
+                        for i in range(1, 4):
+                            nd = start.replace(year=start.year + i).strftime('%Y-%m-%d')
+                            new_i = Income(apartment_id=apartment_id, platform_id=platform_id, date=nd, gross_amount=gross_amount, vat_percent=vat_percent, net_amount=round(gross_amount * (1 - (vat_percent / 100.0)), 2), pm_percent=pm_percent, pm_amount=round(gross_amount * (pm_percent / 100.0), 2), net_after_pm=round(round(gross_amount * (1 - (vat_percent / 100.0)), 2) - round(gross_amount * (pm_percent / 100.0), 2), 2), associated_pm_id=associated_pm_id, recurrence_id=r.id, notes=notes)
+                            db.add(new_i)
+                        db.commit()
+                except Exception:
+                    pass
+        except Exception:
+            form = await request.form()
         next_url = form.get('next') if form else None
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)

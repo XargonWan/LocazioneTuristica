@@ -63,6 +63,15 @@
             <label>PM amount</label>
             <input class="form-control" value="€{{ '%.2f'|format(expense.pm_amount if expense.pm_amount is not none else 0.0) }}" disabled>
           </div>
+            <div class="mb-3">
+              <label>Ricorrenza</label>
+              <select name="recurrence" class="form-control">
+                <option value="none">Mai</option>
+                <option value="monthly">Mensile</option>
+                <option value="yearly">Annuale</option>
+              </select>
+              <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future.</small>
+            </div>
           <div class="mb-3">
             <label>Net after PM</label>
             <input class="form-control" value="€{{ '%.2f'|format(expense.net_after_pm if expense.net_after_pm is not none else 0.0) }}" disabled>
