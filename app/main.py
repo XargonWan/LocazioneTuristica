@@ -99,9 +99,18 @@ async def overview(request: Request):
         return RedirectResponse(url="/login")
     db = SessionLocal()
     try:
-        # Compute basic monthly totals for current year
+        # Compute basic monthly totals for requested year (defaults to current year)
         from datetime import datetime
-        year = datetime.now().year
+        current_year = datetime.now().year
+        # allow overriding via query param
+        year = current_year
+        try:
+            qyear = request.query_params.get('year')
+            if qyear is not None:
+                year = int(qyear)
+        except Exception:
+            # ignore bad input and stick with current year
+            year = current_year
         incomes = db.query(Income).all()
         expenses = db.query(Expense).all()
         months = {m: {'income': 0.0, 'expense': 0.0} for m in range(1, 13)}
@@ -171,10 +180,9 @@ async def overview(request: Request):
             if d.year == year:
                 pm_paid_total += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
         pm_paid_pct = round((pm_paid_total / total_income) * 100, 2) if total_income > 0 else 0.0
-        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
+        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'current_year': current_year, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
     finally:
         db.close()
-
 
 @app.post("/overview")
 async def overview_post(request: Request):

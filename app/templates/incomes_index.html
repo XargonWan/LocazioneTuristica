@@ -11,7 +11,7 @@
         <button id="bulkDeleteBtn" class="btn btn-sm btn-danger d-none">Elimina selezionate</button>
       </div>
       <div>
-        <label class="me-2">Seleziona tutto <input type="checkbox" id="selectAllIncomes" class="form-check-input ms-1 d-none"></label>
+        <label id="selectAllIncomesLabel" class="me-2 d-none">Seleziona tutto <input type="checkbox" id="selectAllIncomes" class="form-check-input ms-1"></label>
       </div>
     </div>
     <form method="post" action="/money/incomes/add">
@@ -343,6 +343,8 @@ document.addEventListener('DOMContentLoaded', function(){
     bulkEditBtn.classList.toggle('d-none', !show);
     bulkDeleteBtn.classList.toggle('d-none', !show);
     selectAll.classList.toggle('d-none', !show);
+    const lbl = document.getElementById('selectAllIncomesLabel');
+    if (lbl) lbl.classList.toggle('d-none', !show);
   }
 
   function selectedIds(){
@@ -377,11 +379,14 @@ document.addEventListener('DOMContentLoaded', function(){
         // clearing selections when leaving edit mode
         document.querySelectorAll('.sel-income').forEach(cb => { cb.checked = false; });
         updateCounts();
+        // also hide the "select all" label since we are no longer editing
+        const lbl = document.getElementById('selectAllIncomesLabel');
+        if (lbl) lbl.classList.add('d-none');
       }
     });
   }
 
-  selectAll.addEventListener('change', () => {
+  selectAll && selectAll.addEventListener('change', () => {
     const checked = selectAll.checked;
     document.querySelectorAll('.sel-income').forEach(cb => cb.checked = checked);
     updateCounts();

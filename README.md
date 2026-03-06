@@ -1,5 +1,8 @@
 # LocazioneTuristica
 
+> [!WARNING]
+> L'applicazione è nel pieno del suo sviluppo, al momento è da considerarsi non affidabile  
+
 LocazioneTuristica è una semplice ma completa applicazione web per gestire le entrate e le spese di locazioni turistiche (affitti brevi). È pensata per piccole realtà e per chi vuole tenere traccia dei flussi economici, delle spese, delle ripetizioni periodiche (recurrence) e degli allegati relativi a ogni voce.
 
 ## Caratteristiche principali ✅
@@ -44,7 +47,7 @@ UVICORN_RELOAD=1 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8
 Oppure con Docker Compose:
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
 Il volume `./data` viene usato per conservare il database SQLite e gli allegati caricati.

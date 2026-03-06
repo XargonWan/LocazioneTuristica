@@ -249,7 +249,12 @@
           const selectAll = document.getElementById(cfg.selectAllId);
           if (bulkEditBtn) bulkEditBtn.classList.toggle('d-none', isActive);
           if (bulkDeleteBtn) bulkDeleteBtn.classList.toggle('d-none', isActive);
-          if (selectAll) selectAll.classList.toggle('d-none', isActive);
+          if (selectAll) {
+            selectAll.classList.toggle('d-none', isActive);
+            // hide surrounding label as well so the "Seleziona tutto" text isn't visible outside edit mode
+            const lbl = selectAll.closest && selectAll.closest('label');
+            if (lbl) lbl.classList.toggle('d-none', isActive);
+          }
           // toggle body class and button visuals
           const btn = document.getElementById(cfg.editBtnId);
           if (btn) {

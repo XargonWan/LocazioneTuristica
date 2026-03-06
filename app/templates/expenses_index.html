@@ -11,7 +11,7 @@
         <button id="bulkDeleteExpBtn" class="btn btn-sm btn-danger d-none">Elimina selezionate</button>
       </div>
       <div>
-        <label class="me-2">Seleziona tutto <input type="checkbox" id="selectAllExpenses" class="form-check-input ms-1 d-none"></label>
+        <label id="selectAllExpensesLabel" class="me-2 d-none">Seleziona tutto <input type="checkbox" id="selectAllExpenses" class="form-check-input ms-1"></label>
       </div>
     </div>
     <form method="post" action="/money/expenses/add">
@@ -337,6 +337,8 @@ document.addEventListener('DOMContentLoaded', function(){
     bulkEditBtn.classList.toggle('d-none', !show);
     bulkDeleteBtn.classList.toggle('d-none', !show);
     selectAll.classList.toggle('d-none', !show);
+    const lbl = document.getElementById('selectAllExpensesLabel');
+    if (lbl) lbl.classList.toggle('d-none', !show);
   }
 
   function selectedIds(){
@@ -370,6 +372,8 @@ document.addEventListener('DOMContentLoaded', function(){
         // leaving edit mode, clear selections
         document.querySelectorAll('.sel-expense').forEach(cb => { cb.checked = false; });
         updateCounts();
+        const lbl = document.getElementById('selectAllExpensesLabel');
+        if (lbl) lbl.classList.add('d-none');
       }
     });
   }

@@ -2,7 +2,17 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center">
-  <h1>Rendiconto</h1>
+  <h1 class="mb-0">
+    {# previous year arrow #}
+    <a href="/overview?year={{ year-1 }}" class="btn btn-link p-0 me-2" title="Anno precedente">&larr;</a>
+    Rendiconto {{ year }}
+    {# next year arrow; disable if already at or past current year #}
+    {% if current_year is defined and year < current_year %}
+      <a href="/overview?year={{ year+1 }}" class="btn btn-link p-0 ms-2" title="Anno successivo">&rarr;</a>
+    {% else %}
+      <span class="btn btn-link disabled p-0 ms-2" aria-disabled="true">&rarr;</span>
+    {% endif %}
+  </h1>
     <div>
     {% if request.session.get('role') == 'admin' %}
     <a href="/money/incomes?next=/overview" class="btn btn-success me-2">+ Entrata</a>
@@ -338,6 +348,11 @@ document.addEventListener('DOMContentLoaded', function(){
     bulkEditBtn.classList.toggle('d-none', !show);
     bulkDeleteBtn.classList.toggle('d-none', !show);
     selectAll.classList.toggle('d-none', !show);
+    // also hide the surrounding label so the "Seleziona tutto" text disappears outside edit mode
+    if (selectAll && selectAll.closest) {
+      const lbl = selectAll.closest('label');
+      if (lbl) lbl.classList.toggle('d-none', !show);
+    }
   }
 
   function selected(){
@@ -399,42 +414,91 @@ document.addEventListener('DOMContentLoaded', function(){
     form.action = s.types[0] === 'income' ? '/money/incomes/bulk_edit' : '/money/expenses/bulk_edit';
     form.submit();
   });
-
-  bulkDeleteConfirm && bulkDeleteConfirm.addEventListener('click', () => {
-    const s = selected();
-    if (s.ids.length === 0){ alert('Seleziona almeno una voce.'); return; }
-    if (s.types.length !== 1){ alert('Seleziona solo voci dello stesso tipo (tutte entrate o tutte spese).'); return; }
-    if (!confirm(`Stai eliminando ${s.ids.length} voci, vuoi davvero continuare?`)) return;
-    const form = document.getElementById('bulkDeleteOvForm');
-    form.action = s.types[0] === 'income' ? '/money/incomes/bulk_delete' : '/money/expenses/bulk_delete';
-    form.submit();
+  bulkDeleteConfirm && bulkDeleteConfirm.addEventListener('click', async () => {
+    const checked = Array.from(document.querySelectorAll('.sel-ov:checked'));
+    if (checked.length === 0){ alert('Seleziona almeno una voce.'); return; }
+    if (!confirm(`Stai eliminando ${checked.length} voci, vuoi davvero continuare?`)) return;
+    const deleteSeries = document.getElementById('deleteSeriesIfPresentOv') ? document.getElementById('deleteSeriesIfPresentOv').checked : false;
+    // build mapping by type
+    const map = {};
+    checked.forEach(cb => {
+      const t = cb.dataset.type || '';
+      map[t] = map[t] || [];
+      map[t].push(cb.value);
+    });
+    const types = Object.keys(map);
+    if (types.length === 1) {
+      // single type: keep using the modal form submit behavior
+      const s = selected();
+      const form = document.getElementById('bulkDeleteOvForm');
+      form.action = s.types[0] === 'income' ? '/money/incomes/bulk_delete' : '/money/expenses/bulk_delete';
+      document.getElementById('bulkDeleteOvIds').value = s.ids.join(',');
+      document.getElementById('bulkDeleteOvType').value = s.types[0] || '';
+      form.submit();
+      return;
+    }
+    // Mixed types: perform sequential requests for each type and then reload /overview
+    try {
+      const promises = types.map(type => {
+        const url = type === 'income' ? '/money/incomes/bulk_delete' : '/money/expenses/bulk_delete';
+        const body = new URLSearchParams();
+        body.append('ids', map[type].join(','));
+        if (deleteSeries) body.append('delete_series_if_present', 'on');
+        body.append('next', '/overview');
+        return fetch(url, { method: 'POST', body, credentials: 'same-origin' });
+      });
+      await Promise.all(promises);
+    } catch (err) {
+      console.error('Bulk delete (mixed types) failed', err);
+      alert("Errore durante l'eliminazione di voci. Controlla la console.");
+      return;
+    }
+    // reload overview which is the canonical place for these actions
+    window.location = '/overview';
   });
 
   // Fallback: intercept click on the overview bulk-delete button to avoid relying on Bootstrap modal
   const bulkDeleteOvBtnEl = document.getElementById('bulkDeleteOvBtn');
   if (bulkDeleteOvBtnEl) {
     // capturing listener at document level to intercept before Bootstrap modal handlers
-    document.addEventListener('click', function captureBulkDeleteOv(e){
+    document.addEventListener('click', async function captureBulkDeleteOv(e){
       const btn = e.target.closest && e.target.closest('#bulkDeleteOvBtn');
       if (!btn) return;
       try { e.preventDefault(); e.stopImmediatePropagation(); } catch (err) { /* ignore */ }
       const s = selected();
       console.debug('captured bulkDeleteOvBtn click (capture), selected=', s);
       if (s.ids.length === 0){ alert('Seleziona almeno una voce.'); return; }
-      if (s.types.length !== 1){ alert('Seleziona solo voci dello stesso tipo (tutte entrate o tutte spese).'); return; }
+      // If all selected are the same type, try to use the modal. If mixed, do confirm+fetch per type.
       const modalShown = window.showModalSafe && window.showModalSafe('bulkDeleteOvModal');
-      if (modalShown) {
+      if (s.types.length === 1 && modalShown) {
         document.getElementById('bulkDeleteOvIds').value = s.ids.join(',');
         document.getElementById('bulkDeleteOvType').value = s.types[0] || '';
         return;
       }
-      window.showFallbackBanner && window.showFallbackBanner('Impossibile aprire la finestra di conferma — utilizzo flusso alternativo');
-      if (!confirm(`Stai eliminando ${s.ids.length} voci, vuoi davvero continuare?`)) return;
-      const form = document.getElementById('bulkDeleteOvForm');
-      form.action = s.types[0] === 'income' ? '/money/incomes/bulk_delete' : '/money/expenses/bulk_delete';
-      document.getElementById('bulkDeleteOvIds').value = s.ids.join(',');
-      document.getElementById('bulkDeleteOvType').value = s.types[0] || '';
-      form.submit();
+      // Fallback path: if mixed types or modal failed, perform confirm+submit via fetch per type
+      const checked = Array.from(document.querySelectorAll('.sel-ov:checked'));
+      if (checked.length === 0){ alert('Seleziona almeno una voce.'); return; }
+      if (!confirm(`Stai eliminando ${checked.length} voci, vuoi davvero continuare?`)) return;
+      const deleteSeries = document.getElementById('deleteSeriesIfPresentOv') ? document.getElementById('deleteSeriesIfPresentOv').checked : false;
+      // build mapping
+      const map = {};
+      checked.forEach(cb => { const t = cb.dataset.type || ''; (map[t] = map[t] || []).push(cb.value); });
+      try {
+        const promises = Object.keys(map).map(type => {
+          const url = type === 'income' ? '/money/incomes/bulk_delete' : '/money/expenses/bulk_delete';
+          const body = new URLSearchParams();
+          body.append('ids', map[type].join(','));
+          if (deleteSeries) body.append('delete_series_if_present', 'on');
+          body.append('next', '/overview');
+          return fetch(url, { method: 'POST', body, credentials: 'same-origin' });
+        });
+        await Promise.all(promises);
+      } catch (err) {
+        console.error('Bulk delete (capture mixed types) failed', err);
+        alert("Errore durante l'eliminazione di voci. Controlla la console.");
+        return;
+      }
+      window.location = '/overview';
     }, true);
   }
 
