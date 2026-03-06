@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Conferma aggiornamento percentuale PM</h5>
+        <p>Hai modificato la percentuale del Property Manager da <strong>{{ old_percent }}%</strong> a <strong>{{ new_percent }}%</strong>.</p>
+        <p>Sono state trovate <strong>{{ inc_count + exp_count }}</strong> voci associate al PM con la percentuale precedente:</p>
+        <ul>
+          <li>{{ inc_count }} entrate</li>
+          <li>{{ exp_count }} spese</li>
+        </ul>
+        <p>Vuoi aggiornare automaticamente queste voci alla nuova percentuale?</p>
+        <form method="post" action="/anagrafiche/property-manager/{{ pm.id }}/edit">
+          <!-- preserve original fields -->
+          <input type="hidden" name="first_name" value="{{ pm.first_name }}">
+          <input type="hidden" name="last_name" value="{{ pm.last_name }}">
+          <input type="hidden" name="percent" value="{{ new_percent }}">
+          <input type="hidden" name="old_percent" value="{{ old_percent }}">
+          <input type="hidden" name="confirm_update" value="1">
+          {% if apartment_ids %}
+            {% for aid in apartment_ids %}
+              <input type="hidden" name="apartment_ids" value="{{ aid }}">
+            {% endfor %}
+          {% endif %}
+          <button class="btn btn-primary" type="submit">Sì, aggiorna voci</button>
+          <a href="/anagrafiche/property-manager/{{ pm.id }}/edit" class="btn btn-secondary">Annulla</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

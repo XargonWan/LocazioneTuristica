@@ -113,6 +113,33 @@ async def overview(request: Request):
             year = current_year
         incomes = db.query(Income).all()
         expenses = db.query(Expense).all()
+        # determine which years have any entries so we can limit navigation
+        years_with_data = set()
+        for inc in incomes:
+            try:
+                d = datetime.strptime(inc.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            years_with_data.add(d.year)
+        for exp in expenses:
+            try:
+                d = datetime.strptime(exp.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            years_with_data.add(d.year)
+        sorted_years = sorted(years_with_data)
+        prev_year = None
+        next_year = None
+        if sorted_years:
+            # find nearest neighbors around selected year
+            for y in reversed(sorted_years):
+                if y < year:
+                    prev_year = y
+                    break
+            for y in sorted_years:
+                if y > year:
+                    next_year = y
+                    break
         months = {m: {'income': 0.0, 'expense': 0.0} for m in range(1, 13)}
         # track amount due to PM per month separately from expenses
         for m in months:
@@ -180,7 +207,7 @@ async def overview(request: Request):
             if d.year == year:
                 pm_paid_total += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
         pm_paid_pct = round((pm_paid_total / total_income) * 100, 2) if total_income > 0 else 0.0
-        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'current_year': current_year, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
+        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
     finally:
         db.close()
 

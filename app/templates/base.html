@@ -204,8 +204,15 @@
         const now = new Date();
         const defaultYearFromServer = '{{ year | default('') }}';
         const year = defaultYearFromServer ? parseInt(defaultYearFromServer, 10) : now.getFullYear();
-        for (let y = year; y >= year - 5; --y) {
-          const o = document.createElement('option'); o.value = y; o.text = y; sel.appendChild(o);
+        // if server provided an explicit list of years with data, use it instead
+        if (window.overviewAvailableYears && Array.isArray(window.overviewAvailableYears) && window.overviewAvailableYears.length) {
+          window.overviewAvailableYears.forEach(y => {
+            const o = document.createElement('option'); o.value = y; o.text = y; sel.appendChild(o);
+          });
+        } else {
+          for (let y = year; y >= year - 5; --y) {
+            const o = document.createElement('option'); o.value = y; o.text = y; sel.appendChild(o);
+          }
         }
         sel.value = year;
         const refresh = document.getElementById('overview-refresh');

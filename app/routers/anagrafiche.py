@@ -7,7 +7,7 @@ from app.db import SessionLocal
 from app.auth_utils import get_current_user
 from app.auth_utils import admin_required, auth_required
 from app.models import PropertyManager, Apartment, Company, Platform
-from app.models import Income
+from app.models import Income, Expense
 from datetime import datetime
 from app.debug import log_request_form
 
@@ -152,14 +152,63 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
         print('DEBUG: edit_pm_post called with method', request.method, 'pm_id', pm_id)
     except Exception:
         pass
+
+    # read raw form data to access hidden fields like old_percent and confirm_update
+    form = await request.form()
+    old_percent = float(form.get('old_percent') or 0.0)
+    confirm_update = form.get('confirm_update') == '1'
+
     db = SessionLocal()
     try:
         pm = db.query(PropertyManager).filter(PropertyManager.id == pm_id).first()
         if not pm:
             return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+
+        # if percent changed and we haven't yet confirmed, look for affected entries
+        if percent != old_percent and not confirm_update:
+            # count incomes/expenses where the PM is associated and the stored percent matches the old value
+            incs = db.query(Income).filter(Income.associated_pm_id == pm.id, Income.pm_percent == old_percent).all()
+            exps = db.query(Expense).filter(Expense.associated_pm_id == pm.id, Expense.pm_percent == old_percent).all()
+            if incs or exps:
+                # render confirmation screen
+                return templates.TemplateResponse('pm_update_confirm.html', {
+                    'request': request,
+                    'pm': pm,
+                    'old_percent': old_percent,
+                    'new_percent': percent,
+                    'inc_count': len(incs),
+                    'exp_count': len(exps),
+                    'apartment_ids': apartment_ids or []
+                })
+
+        # apply changes to PM
         pm.first_name = first_name
         pm.last_name = last_name
         pm.percent = percent
+
+        # if confirmation was requested and there are affected entries, update them now
+        if percent != old_percent and confirm_update:
+            # update incomes
+            for inc in db.query(Income).filter(Income.associated_pm_id == pm.id, Income.pm_percent == old_percent).all():
+                inc.pm_percent = percent
+                try:
+                    gross = float(inc.gross_amount or 0.0)
+                    inc.pm_amount = round(gross * (percent / 100.0), 2)
+                    inc.net_after_pm = round(float(inc.net_amount or 0.0) - inc.pm_amount, 2)
+                except Exception:
+                    pass
+                db.add(inc)
+            # update expenses
+            for exp in db.query(Expense).filter(Expense.associated_pm_id == pm.id, Expense.pm_percent == old_percent).all():
+                exp.pm_percent = percent
+                try:
+                    gross = float(exp.gross_amount or 0.0)
+                    exp.pm_amount = round(gross * (percent / 100.0), 2)
+                    exp.net_after_pm = round(float(exp.net_amount or 0.0) - exp.pm_amount, 2)
+                except Exception:
+                    pass
+                db.add(exp)
+
         # Update apartment associations: set property_manager_id for selected apartments
         if apartment_ids is not None:
             # Clear apartments currently assigned to this PM not selected now
@@ -176,6 +225,7 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
                     ap.property_manager_id = pm.id
                     db.add(ap)
             db.commit()
+
         db.add(pm)
         db.commit()
         return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)

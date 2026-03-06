@@ -19,6 +19,8 @@
             <label class="form-label">Percentuale PM (%)</label>
             <input class="form-control" type="number" step="0.01" name="percent" value="{{ pm.percent or 0.0 }}">
           </div>
+          <!-- keep old percentage for change detection -->
+          <input type="hidden" name="old_percent" value="{{ pm.percent or 0.0 }}">
           {% if pm_total is defined %}
           <div class="mb-2">
             <small class="text-muted">Totale versato PM (anno corrente): <strong>€{{ '%.2f'|format(pm_total) }}</strong></small>
