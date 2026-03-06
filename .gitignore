@@ -19,3 +19,7 @@ __pycache__/
 .DS_Store
 .run_pid
 .dev_uvicorn.pid
+
+# Custom
+docker-compose.override.yml
+TODO.md
