@@ -1,7 +1,7 @@
 aiofiles==23.1.0
-fastapi>=0.99
-uvicorn>=0.22
-Jinja2>=3.1
+fastapi>=0.100
+uvicorn>=0.23
+Jinja2>=3.1.0,<3.2.0
 SQLAlchemy>=1.4
 alembic>=1.10
 passlib[bcrypt]>=1.7

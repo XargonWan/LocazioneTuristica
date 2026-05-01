@@ -43,14 +43,27 @@
             </select>
           </div>
           <div class="mb-3">
-            <label>Associata a (PM)</label>
-            <select name="associated_pm_id" class="form-control">
+            {% set has_pm = income.associated_pm_id is not none and income.associated_pm_id != '' %}
+            <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm" {% if has_pm %}checked{% endif %}> Associata a (PM)</label>
+            <select name="associated_pm_id" class="form-control" id="associated_pm_select" {% if not has_pm %}disabled{% endif %}>
               <option value="">---</option>
               {% for pm in pms %}
                 <option value="{{ pm.id }}" {% if pm.id == income.associated_pm_id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
               {% endfor %}
             </select>
           </div>
+          <script>
+            (function(){
+              const chk = document.getElementById('associate_pm_checkbox');
+              const sel = document.getElementById('associated_pm_select');
+              if(chk && sel){
+                chk.addEventListener('change', ()=>{
+                  sel.disabled = !chk.checked;
+                  if(!chk.checked){ sel.value = '' }
+                });
+              }
+            })();
+          </script>
           <div class="mb-3">
             <label>Note</label>
             <textarea name="notes" class="form-control">{{ income.notes }}</textarea>
@@ -58,21 +71,67 @@
           <div class="mb-3">
             <label>Ricorrenza</label>
             <select name="recurrence" class="form-control">
-              <option value="none">Mai</option>
-              <option value="monthly">Mensile</option>
-              <option value="yearly">Annuale</option>
+              <option value="none" {% if not income.recurrence %}selected{% endif %}>Mai</option>
+              <option value="monthly" {% if income.recurrence and income.recurrence.type == 'monthly' %}selected{% endif %}>Mensile</option>
+              <option value="yearly" {% if income.recurrence and income.recurrence.type == 'yearly' %}selected{% endif %}>Annuale</option>
             </select>
             <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future.</small>
           </div>
-          {% if income.recurrence_id %}
+          {% set orig_id = income._orig_recurrence_id if income._orig_recurrence_id is defined else '' %}
+          <input type="hidden" name="orig_recurrence_id" value="{{ orig_id }}">
+          {% if orig_id and not income.recurrence_id %}
+          <div class="alert alert-info">
+            Questa voce appartiene a una serie ricorrente (ID {{ orig_id }}); è stata staccata dalla serie.
+          </div>
+          {% endif %}
+          <div class="mb-3">
+            <label>Da (mese/anno)</label>
+            {% set start_val = '' %}
+            {% if income.recurrence and income.recurrence.start_date %}
+              {% set start_val = income.recurrence.start_date[:7] %}
+            {% elif income.date %}
+              {% set start_val = income.date[:7] %}
+            {% endif %}
+            <input type="month" name="recurrence_start" class="form-control" value="{{ start_val }}">
+          </div>
+          <div class="mb-3 recurrence-range">
+            <label>Fino a (mese/anno)</label>
+            {% set end_val = income.recurrence.end_date[:7] if income.recurrence and income.recurrence.end_date else '' %}
+            <input type="month" name="recurrence_end" class="form-control" value="{{ end_val }}">
+          </div>
+          <script>
+            (function(){
+              const sel = document.querySelector('select[name="recurrence"]');
+              const rangeElems = document.querySelectorAll('.recurrence-range');
+              function update(){
+                const show = sel && sel.value !== 'none';
+                const yearly = sel && sel.value === 'yearly';
+                rangeElems.forEach(e=>{
+                  e.style.display = show ? 'block' : 'none';
+                  const inp = e.querySelector('input');
+                  const lbl = e.querySelector('label');
+                  if(inp){
+                    if(yearly){ inp.type='number'; inp.min=2000; inp.max=3000; }
+                    else { inp.type='month'; inp.removeAttribute('min'); inp.removeAttribute('max'); }
+                  }
+                  if(lbl){
+                    if(yearly){ lbl.textContent = lbl.textContent.replace('mese/anno','anno'); }
+                    else { lbl.textContent = lbl.textContent.replace('anno','mese/anno'); }
+                  }
+                });
+              }
+              if(sel){ sel.addEventListener('change', update); update(); }
+            })();
+          </script>
+          {% if income.recurrence_id or income._orig_recurrence_id is defined %}
           <div class="mb-3">
             <label>Applica modifiche a</label>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single" checked>
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single" {% if not (income.recurrence_id or income._orig_recurrence_id) %}checked{% endif %}>
               <label class="form-check-label" for="apply_single">Solo questa voce (esci dal cluster)</label>
             </div>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series">
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series" {% if income.recurrence_id or income._orig_recurrence_id %}checked{% endif %}>
               <label class="form-check-label" for="apply_series">Tutta la serie ricorrente (modifica tutte le voci)</label>
             </div>
           </div>

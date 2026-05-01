@@ -73,7 +73,8 @@ def test_pm_percent_change_prompts_update_and_applies():
         assert resp2.status_code in (200, 303)
         db.refresh(inc); db.refresh(exp)
         assert float(inc.pm_percent) == 30.0
-        assert float(exp.pm_percent) == 30.0
+        # expense percent should be cleared when PM percent changes
+        assert float(exp.pm_percent) == 0.0
     finally:
         # cleanup
         try:

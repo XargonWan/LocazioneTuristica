@@ -24,7 +24,7 @@ async def index(request: Request):
     db = SessionLocal()
     try:
         attachments = db.query(Attachment).order_by(Attachment.created_at.desc()).limit(50).all()
-        return templates.TemplateResponse("attachments_index.html", {"request": request, "attachments": attachments})
+        return templates.TemplateResponse(request, "attachments_index.html", {"attachments": attachments})
     finally:
         db.close()
 

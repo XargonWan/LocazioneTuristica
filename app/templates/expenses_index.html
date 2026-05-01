@@ -6,7 +6,9 @@
   <div class="card-body">
     <div class="d-flex justify-content-between mb-2">
       <div>
-        <button id="editModeToggleExp" class="btn btn-outline-primary btn-sm" onclick="toggleEditMode('expenses')">Modifica...</button>
+        {% if expenses and expenses|length > 0 and not next %}
+        <button id="editModeToggleExp" class="btn btn-primary btn-sm" onclick="toggleEditMode('expenses')">Modifica...</button>
+        {% endif %}
         <button id="bulkEditExpBtn" class="btn btn-sm btn-secondary d-none" data-bs-toggle="modal" data-bs-target="#bulkEditExpenseModal">Modifica selezionate</button>
         <button id="bulkDeleteExpBtn" class="btn btn-sm btn-danger d-none">Elimina selezionate</button>
       </div>
@@ -18,11 +20,15 @@
       <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
         <label>Data</label>
-        <input type="date" name="date" class="form-control" required>
+        <input type="date" name="date" class="form-control" required value="{{ default_date if default_date else '' }}">
       </div>
       <div class="mb-3">
         <label>Importo lordo</label>
         <input type="number" name="gross_amount" step="0.01" class="form-control" required>
+      </div>
+      <div class="mb-3 form-check">
+        <input type="checkbox" class="form-check-input" id="expense_is_cleaning" name="is_cleaning" value="1">
+        <label class="form-check-label" for="expense_is_cleaning">Spesa di pulizia</label>
       </div>
       <div class="mb-3">
         <label>Importo netto</label>
@@ -46,22 +52,31 @@
         </select>
       </div>
       <div class="mb-3">
-        <label>Associata a (PM)</label>
-        <select name="associated_pm_id" class="form-control">
+        <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm"> Pagamento a (PM)</label>
+        <select name="associated_pm_id" class="form-control" id="associated_pm_select" disabled>
           <option value="">---</option>
           {% for pm in pms %}
           <option value="{{ pm.id }}" {% if default_associated_pm_id is defined and pm.id == default_associated_pm_id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
           {% endfor %}
         </select>
       </div>
+      <script>
+        (function(){
+          const chk = document.getElementById('associate_pm_checkbox');
+          const sel = document.getElementById('associated_pm_select');
+          if(chk && sel){
+            chk.addEventListener('change', ()=>{
+              sel.disabled = !chk.checked;
+              if(!chk.checked){ sel.value = '' }
+            });
+          }
+        })();
+      </script>
       <div class="mb-3">
         <label>IVA (%)</label>
         <input type="number" name="vat_percent" step="0.01" class="form-control" value="22.0">
       </div>
-      <div class="mb-3">
-        <label>Percentuale PM (%)</label>
-        <input type="number" name="pm_percent" step="0.01" class="form-control" value="{{ default_pm_percent if default_pm_percent is defined else 0.0 }}">
-      </div>
+      {# percentuale PM stripped from expenses #}
       <div class="mb-3">
         <label>Ricorrenza</label>
         <select name="recurrence" class="form-control">
@@ -70,6 +85,48 @@
           <option value="yearly">Annuale</option>
         </select>
       </div>
+      <div class="mb-3 recurrence-range">
+        <label>Da (mese/anno)</label>
+        <input type="month" name="recurrence_start" class="form-control">
+      </div>
+      <div class="mb-3 recurrence-range">
+        <label>Fino a (mese/anno)</label>
+        <input type="month" name="recurrence_end" class="form-control">
+      </div>
+      <script>
+        (function(){
+          const sel = document.querySelector('select[name="recurrence"]');
+          const rangeElems = document.querySelectorAll('.recurrence-range');
+          function update(){
+            const show = sel && sel.value !== 'none';
+            const yearly = sel && sel.value === 'yearly';
+            rangeElems.forEach(e=>{
+              e.style.display = show ? 'block' : 'none';
+              const inp = e.querySelector('input');
+              const lbl = e.querySelector('label');
+              if(inp){
+                if(yearly){
+                  inp.type = 'number';
+                  inp.min = 2000;
+                  inp.max = 3000;
+                } else {
+                  inp.type = 'month';
+                  inp.removeAttribute('min');
+                  inp.removeAttribute('max');
+                }
+              }
+              if(lbl){
+                if(yearly){
+                  lbl.textContent = lbl.textContent.replace('mese/anno', 'anno');
+                } else {
+                  lbl.textContent = lbl.textContent.replace('anno', 'mese/anno');
+                }
+              }
+            });
+          }
+          if(sel){ sel.addEventListener('change', update); update(); }
+        })();
+      </script>
       <div class="mb-3">
         <label>Causale / Note</label>
         <textarea name="notes" class="form-control"></textarea>
@@ -86,7 +143,7 @@
           <input class="form-check-input sel-expense" type="checkbox" value="{{ e.id }}" id="selExp-{{ e.id }}">
         </div>
         <div>
-            <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }} ) - PM: €{{ '%.2f'|format(e.pm_amount if e.pm_amount is not none else 0.0) }} - Netto dopo PM: €{{ '%.2f'|format(e.net_after_pm if e.net_after_pm is not none else 0.0) }} </div>
+            <div>{% if e.is_cleaning %}🧹 {% endif %}{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }} ) - PM: €{{ '%.2f'|format(e.pm_amount if e.pm_amount is not none else 0.0) }} - Netto dopo PM: €{{ '%.2f'|format(e.net_after_pm if e.net_after_pm is not none else 0.0) }} </div>
           <small class="text-muted">{{ e.notes }}</small>
         </div>
         <span>
@@ -101,11 +158,14 @@
               <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                   <div class="modal-header">
-                    <h5 class="modal-title" id="expenseModalLabel-{{ e.id }}">Dettagli Spesa {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                    <h5 class="modal-title" id="expenseModalLabel-{{ e.id }}">Dettagli Spesa {% if e.is_cleaning %}🧹 {% endif %}{{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
                   </div>
                   <div class="modal-body">
                     <p><strong>Data:</strong> {{ e.date|format_date }}</p>
+                    {% if e.recurrence %}
+                      <p><strong>Ricorrenza:</strong> da {{ e.recurrence.start_date|format_date }}{% if e.recurrence.end_date %} a {{ e.recurrence.end_date|format_date }}{% endif %}</p>
+                    {% endif %}
                     <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(e.gross_amount) }}</p>
                     <p><strong>IVA:</strong> {{ e.vat_percent }}%</p>
                     <p><strong>Importo netto:</strong> €{{ '%.2f'|format(e.net_amount) }}</p>
@@ -128,7 +188,7 @@
                     </ul>
                   </div>
                   <div class="modal-footer">
-                    <a class="btn btn-primary" href="/money/expenses/{{ e.id }}/edit">Modifica</a>
+                    <a class="btn btn-primary" href="/money/expenses/{{ e.id }}/edit?next={{ next if next is defined and next else '/money/expenses' }}">Modifica</a>
                     <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineExp-{{ e.id }}">Elimina</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
                   </div>
@@ -209,6 +269,10 @@
                       <label>Data</label>
                       <input type="date" name="date" class="form-control">
                     </div>
+                    <div class="mb-2 form-check">
+                      <input class="form-check-input" type="checkbox" id="bulk-is-cleaning" name="is_cleaning" value="1">
+                      <label class="form-check-label" for="bulk-is-cleaning">Segna come pulizia</label>
+                    </div>
                     <input type="hidden" name="ids" id="bulkEditExpenseIds">
                   </div>
                   <div class="modal-footer">
@@ -285,29 +349,10 @@
         {% endif %}
       {% endfor %}
 <script>
-  // Automatically set pm_percent when apartment selection changes
   document.addEventListener('DOMContentLoaded', function(){
-    const aptPmMap = {{ apt_pm_map|tojson if apt_pm_map is defined else '{}' }};
-    const aptSelect = document.querySelector('select[name="apartment_id"]');
-    const pmPercentInput = document.querySelector('input[name="pm_percent"]');
     const grossInput = document.querySelector('input[name="gross_amount"]');
     const vatInput = document.querySelector('input[name="vat_percent"]');
     const netInput = document.querySelector('input[name="net_amount"]');
-    if (aptSelect && pmPercentInput) {
-      aptSelect.addEventListener('change', () => {
-        const id = aptSelect.value;
-        const mapEntry = (aptPmMap && id && aptPmMap[id]) ? aptPmMap[id] : {percent:0.0, pm_id:null};
-        pmPercentInput.value = mapEntry.percent;
-        const pmSelect = document.querySelector('select[name="associated_pm_id"]');
-        if (pmSelect) {
-          if (mapEntry.pm_id) {
-            pmSelect.value = mapEntry.pm_id;
-          } else {
-            pmSelect.value = '';
-          }
-        }
-      });
-    }
     // Auto-calc net when gross or vat change if net input is empty
     function calcNet(){
       if (!grossInput || !vatInput || !netInput) return;
@@ -361,8 +406,7 @@ document.addEventListener('DOMContentLoaded', function(){
       updateSelectionUI(!isActive);
       console.log('editModeToggleExp clicked, active before toggle:', isActive);
       document.body.classList.toggle('editing', !isActive);
-      editModeToggleExp.classList.toggle('btn-primary', !isActive);
-      editModeToggleExp.classList.toggle('btn-outline-primary', isActive);
+      // toggle text only; keep primary styling
       if (!isActive) {
         editModeToggleExp.textContent = 'Fatto';
         console.log('Entered expense edit mode');

@@ -19,8 +19,8 @@
   </h1>
     <div>
     {% if request.session.get('role') == 'admin' %}
-    <a href="/money/incomes?next=/overview" class="btn btn-success me-2">+ Entrata</a>
-    <a href="/money/expenses?next=/overview" class="btn btn-danger">+ Spesa</a>
+    <a href="/money/incomes?next=/overview?year={{year}}" class="btn btn-success me-2">+ Entrata</a>
+    <a href="/money/expenses?next=/overview?year={{year}}" class="btn btn-danger">+ Spesa</a>
     {% endif %}
   </div>
 </div>
@@ -59,12 +59,16 @@
                               {% endif %}
                               <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
                               <div>
-                                <small class="text-success">Inc: €{{ '%.2f'|format(m.income) }}</small>
-                                <small class="text-danger ms-3">Exp: €{{ '%.2f'|format(m.expense) }}</small>
+                                <small class="text-success">Inc netto&nbsp;(-IVA/-PM): €{{ '%.2f'|format(m.income) }}</small>
+                                <small class="text-danger ms-3">Exp (lordo): €{{ '%.2f'|format(m.expense) }}</small>
                                 {% if m.pm_due and m.pm_due > 0 %}
                                   <small class="ms-3 text-danger">PM dovuto: €{{ '%.2f'|format(m.pm_due) }}</small>
                                 {% endif %}
                               </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                              <a href="/money/incomes?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-success">+ Entrata</a>
+                              <a href="/money/expenses?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-danger ms-1">+ Spesa</a>
                             </div>
                           </div>
                           {% if entries_by_month[m.month] %}
@@ -163,7 +167,7 @@
                               {% endif %}
                             </div>
                       <div class="modal-footer">
-                        <a class="btn btn-primary" href="/money/expenses/{{ item.id }}/edit?next=/overview">Modifica</a>
+                        <a class="btn btn-primary" href="/money/expenses/{{ item.id }}/edit?next=/overview?year={{year}}">Modifica</a>
                         <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineOvExp-{{ item.id }}">Elimina</button>
                         <div class="collapse mt-2" id="delInlineOvExp-{{ item.id }}">
                           <div class="card card-body">
@@ -211,7 +215,7 @@
                         {% endif %}
                       </div>
                       <div class="modal-footer">
-                        <a class="btn btn-primary" href="/money/incomes/{{ item.id }}/edit?next=/overview">Modifica</a>
+                        <a class="btn btn-primary" href="/money/incomes/{{ item.id }}/edit?next=/overview?year={{year}}">Modifica</a>
                         <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineOvInc-{{ item.id }}">Elimina</button>
                         <div class="collapse mt-2" id="delInlineOvInc-{{ item.id }}">
                           <div class="card card-body">
@@ -388,8 +392,7 @@ document.addEventListener('DOMContentLoaded', function(){
       updateSelectionUI(!isActive);
       console.log('editModeToggleOv clicked, active before toggle:', isActive);
       document.body.classList.toggle('editing', !isActive);
-      editModeToggleOv.classList.toggle('btn-primary', !isActive);
-      editModeToggleOv.classList.toggle('btn-outline-primary', isActive);
+      // toggle text only; keep primary styling at all times
       if (!isActive) {
         editModeToggleOv.textContent = 'Fatto';
         console.log('Entered overview edit mode');

@@ -29,5 +29,15 @@ if __name__ == "__main__":
     session = SessionLocal()
     create_admin(session)
     create_default_settings(session)
+    # seed a sample cleaning company and service if none exist
+    from app.models import Company, CleaningService
+    if session.query(Company).filter_by(is_cleaning_company=True).count() == 0:
+        comp = Company(company_name="Ditta Pulisci", is_cleaning_company=True)
+        session.add(comp)
+        session.commit()
+        svc = CleaningService(company_id=comp.id, name="Pulizia standard", default_amount=50.0, is_net=False, vat_percent=22.0)
+        session.add(svc)
+        session.commit()
+        print("Seeded sample cleaning company and service")
     session.close()
     print("Database initialized and seeded.")

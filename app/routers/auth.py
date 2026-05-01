@@ -72,7 +72,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
 
 @router.get("/set-password")
 async def set_password_get(request: Request):
-    return templates.TemplateResponse("set_password.html", {"request": request})
+    return templates.TemplateResponse(request, "set_password.html", {})
 
 
 @router.post("/set-password")
@@ -111,7 +111,7 @@ async def users_index(request: Request):
     db = SessionLocal()
     try:
         users = db.query(User).all()
-        return templates.TemplateResponse('users_index.html', {"request": request, 'users': users})
+        return templates.TemplateResponse(request, 'users_index.html', {'users': users})
     finally:
         db.close()
 

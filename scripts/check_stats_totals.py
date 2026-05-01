@@ -24,7 +24,11 @@ try:
         except Exception:
             continue
         if d.year == year:
-            total_income += float(inc.gross_amount or 0)
+            # mirror API logic: use net_after_pm if set, else net_amount - pm_amount
+            amt = float(getattr(inc, 'net_after_pm', None) or 0.0)
+            if not amt:
+                amt = float(getattr(inc, 'net_amount', 0.0) or 0.0) - float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+            total_income += amt
             total_pm_paid += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
     for exp in expenses:
         try:

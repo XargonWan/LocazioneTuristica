@@ -24,10 +24,7 @@
             <label>IVA (%)</label>
             <input type="number" name="vat_percent" step="0.01" class="form-control" value="{{ expense.vat_percent }}">
           </div>
-          <div class="mb-3">
-            <label>Percentuale PM (%)</label>
-            <input type="number" name="pm_percent" step="0.01" class="form-control" value="{{ expense.pm_percent if expense.pm_percent is not none else 0.0 }}">
-          </div>
+          {# PM percentage removed for expenses; payments to PM are handled separately #}
           <div class="mb-3">
             <label>Appartamento</label>
             <select name="apartment_id" class="form-control">
@@ -38,14 +35,27 @@
             </select>
           </div>
           <div class="mb-3">
-            <label>Associata a (PM)</label>
-            <select name="associated_pm_id" class="form-control">
+            {% set has_pm = expense.associated_pm_id is not none and expense.associated_pm_id != '' %}
+            <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm" {% if has_pm %}checked{% endif %}> Pagamento a (PM)</label>
+            <select name="associated_pm_id" class="form-control" id="associated_pm_select" {% if not has_pm %}disabled{% endif %}>
               <option value="">---</option>
               {% for pm in pms %}
                 <option value="{{ pm.id }}" {% if pm.id == expense.associated_pm_id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
               {% endfor %}
             </select>
           </div>
+          <script>
+            (function(){
+              const chk = document.getElementById('associate_pm_checkbox');
+              const sel = document.getElementById('associated_pm_select');
+              if(chk && sel){
+                chk.addEventListener('change', ()=>{
+                  sel.disabled = !chk.checked;
+                  if(!chk.checked){ sel.value = '' }
+                });
+              }
+            })();
+          </script>
           <div class="mb-3">
             <label>Associata a (Ditta)</label>
             <select name="associated_company_id" class="form-control">
@@ -55,36 +65,97 @@
               {% endfor %}
             </select>
           </div>
+          <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="expense_is_cleaning" name="is_cleaning" value="1" {% if expense.is_cleaning %}checked{% endif %}>
+            <label class="form-check-label" for="expense_is_cleaning">Spesa di pulizia</label>
+          </div>
           <div class="mb-3">
             <label>Note</label>
             <textarea name="notes" class="form-control">{{ expense.notes }}</textarea>
           </div>
-          <div class="mb-3">
-            <label>PM amount</label>
-            <input class="form-control" value="€{{ '%.2f'|format(expense.pm_amount if expense.pm_amount is not none else 0.0) }}" disabled>
-          </div>
+          {# display of PM amount not relevant for expenses, hide it #}
             <div class="mb-3">
               <label>Ricorrenza</label>
               <select name="recurrence" class="form-control">
-                <option value="none">Mai</option>
-                <option value="monthly">Mensile</option>
-                <option value="yearly">Annuale</option>
+                <option value="none" {% if not expense.recurrence %}selected{% endif %}>Mai</option>
+                <option value="monthly" {% if expense.recurrence and expense.recurrence.type == 'monthly' %}selected{% endif %}>Mensile</option>
+                <option value="yearly" {% if expense.recurrence and expense.recurrence.type == 'yearly' %}selected{% endif %}>Annuale</option>
               </select>
               <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future.</small>
             </div>
+            {% set orig_id = expense._orig_recurrence_id if expense._orig_recurrence_id is defined else '' %}
+            <input type="hidden" name="orig_recurrence_id" value="{{ orig_id }}">
+            {% if orig_id and not expense.recurrence_id %}
+            <div class="alert alert-info">
+              Questa voce appartiene a una serie ricorrente (ID {{ orig_id }}); rimessa manualmente fuori dalla serie.
+            </div>
+            {% endif %}
+            <div class="mb-3">
+              <label>Da (mese/anno)</label>
+              {% set start_val = '' %}
+              {% if expense.recurrence and expense.recurrence.start_date %}
+                {% set start_val = expense.recurrence.start_date[:7] %}
+              {% elif expense.date %}
+                {% set start_val = expense.date[:7] %}
+              {% endif %}
+              <input type="month" name="recurrence_start" class="form-control" value="{{ start_val }}">
+            </div>
+            <div class="mb-3 recurrence-range">
+              <label>Fino a (mese/anno)</label>
+              {% set end_val = expense.recurrence.end_date[:7] if expense.recurrence and expense.recurrence.end_date else '' %}
+              <input type="month" name="recurrence_end" class="form-control" value="{{ end_val }}">
+            </div>
+          <script>
+            // show/hide and adjust range inputs when recurrence selection changes
+            (function(){
+              const sel = document.querySelector('select[name="recurrence"]');
+              const rangeElems = document.querySelectorAll('.recurrence-range');
+              function update(){
+                const show = sel && sel.value !== 'none';
+                const yearly = sel && sel.value === 'yearly';
+                rangeElems.forEach(e=>{
+                  e.style.display = show ? 'block' : 'none';
+                  const inp = e.querySelector('input');
+                  const lbl = e.querySelector('label');
+                  if(inp){
+                    if(yearly){
+                      inp.type = 'number';
+                      inp.min = 2000;
+                      inp.max = 3000;
+                    } else {
+                      inp.type = 'month';
+                      inp.removeAttribute('min');
+                      inp.removeAttribute('max');
+                    }
+                  }
+                  if(lbl){
+                    if(yearly){
+                      lbl.textContent = lbl.textContent.replace('mese/anno', 'anno');
+                    } else {
+                      lbl.textContent = lbl.textContent.replace('anno', 'mese/anno');
+                    }
+                  }
+                });
+              }
+              if(sel){
+                sel.addEventListener('change', update);
+                update();
+              }
+            })();
+          </script>
           <div class="mb-3">
             <label>Net after PM</label>
             <input class="form-control" value="€{{ '%.2f'|format(expense.net_after_pm if expense.net_after_pm is not none else 0.0) }}" disabled>
           </div>
-          {% if expense.recurrence_id %}
+          {% if expense.recurrence_id or expense._orig_recurrence_id is defined %}
           <div class="mb-3">
             <label>Applica modifiche a</label>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single" checked>
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single" {% if not (expense.recurrence_id or expense._orig_recurrence_id) %}checked{% endif %}>
               <label class="form-check-label" for="apply_single">Solo questa voce (esci dal cluster)</label>
             </div>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series">
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series" {% if expense.recurrence_id or expense._orig_recurrence_id %}checked{% endif %}>
               <label class="form-check-label" for="apply_series">Tutta la serie ricorrente (modifica tutte le voci)</label>
             </div>
           </div>

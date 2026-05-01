@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 from starlette.templating import Jinja2Templates
+from jinja2 import Environment, FileSystemLoader
 
 from .db import init_db, SessionLocal
 from .models import Income, Expense
@@ -11,8 +12,9 @@ from .auth_utils import get_current_user
 
 app = FastAPI(title="LocazioneTuristica")
 
-# Templates
-templates = Jinja2Templates(directory="app/templates")
+# Templates with caching disabled
+_env = Environment(loader=FileSystemLoader("app/templates"), cache_size=0)
+templates = Jinja2Templates(env=_env)
 
 def _format_date(value):
     from datetime import datetime
@@ -140,8 +142,9 @@ async def overview(request: Request):
                 if y > year:
                     next_year = y
                     break
+        # build month ledger; income will be net amounts after pm if available
         months = {m: {'income': 0.0, 'expense': 0.0} for m in range(1, 13)}
-        # track amount due to PM per month separately from expenses
+        # track gross PM due separately so we can still display it
         for m in months:
             months[m]['pm_due'] = 0.0
         for inc in incomes:
@@ -150,7 +153,13 @@ async def overview(request: Request):
             except Exception:
                 continue
             if d.year == year:
-                months[d.month]['income'] += float(inc.gross_amount)
+                # use net_after_pm if it exists (computed when income is created/edited);
+                # fall back to net_amount minus pm_amount to avoid counting VAT or PM twice
+                net_val = float(getattr(inc, 'net_after_pm', None) or 0.0)
+                if not net_val:
+                    # inc.net_after_pm may be zero when not set, so compute defensively
+                    net_val = float(getattr(inc, 'net_amount', 0.0) or 0.0) - float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+                months[d.month]['income'] += net_val
                 months[d.month]['pm_due'] += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
         for exp in expenses:
             try:
@@ -158,7 +167,11 @@ async def overview(request: Request):
             except Exception:
                 continue
             if d.year == year:
+                # expenses are counted as their gross amounts (as requested by user)
                 months[d.month]['expense'] += float(exp.gross_amount)
+                # if this expense represents a payment to a PM, reduce the outstanding due
+                if exp.associated_pm_id:
+                    months[d.month]['pm_due'] -= float(exp.gross_amount)
         months_list = [{'month': m, 'income': months[m]['income'], 'expense': months[m]['expense']} for m in sorted(months.keys())]
         # include pm_due in months list for template
         for m in months_list:
@@ -192,10 +205,13 @@ async def overview(request: Request):
                         associated_pm_name = f"{exp.associated_pm.first_name} {exp.associated_pm.last_name}"
                 except Exception:
                     associated_pm_name = None
-                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(exp, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(exp, 'pm_amount', 0.0) or 0.0), 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)})
+                # expenses no longer expose PM percentage/amount
+                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)})
         # Sort entries in each month by date ascending (earliest first)
         for m in range(1,13):
             entries_by_month[m].sort(key=lambda x: x['date'], reverse=False)
+        # now that months_list has been populated using net-after-PM values,
+        # totals should reflect the same base
         total_income = sum([m['income'] for m in months_list])
         total_expense = sum([m['expense'] for m in months_list])
         pm_paid_total = 0.0
@@ -207,7 +223,7 @@ async def overview(request: Request):
             if d.year == year:
                 pm_paid_total += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
         pm_paid_pct = round((pm_paid_total / total_income) * 100, 2) if total_income > 0 else 0.0
-        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
+        return templates.TemplateResponse(request, "overview.html", {'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
     finally:
         db.close()
 
@@ -220,15 +236,16 @@ async def overview_post(request: Request):
 @app.get("/login")
 async def login(request: Request):
     # Simple login template, actual POST handled in auth router
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 
 # Include routers
-from .routers import anagrafiche, auth, money, attachments, pages  # noqa
+from .routers import anagrafiche, auth, money, attachments, pages, cleaning  # noqa
 
 app.include_router(auth.router)
 app.include_router(anagrafiche.router)
 app.include_router(money.router)
 app.include_router(attachments.router)
+app.include_router(cleaning.router)
 app.include_router(pages.router)
 

@@ -7,8 +7,11 @@ LocazioneTuristica è una semplice ma completa applicazione web per gestire le e
 
 ## Caratteristiche principali ✅
 - Gestione di entrate (incomes) e spese (expenses)
-- Supporto per ricorrenze: crea serie ricorrenti (mensile/annuale) e materializza le occorrenze future
+- Supporto per ricorrenze: crea serie ricorrenti (mensile/annuale) e materializza le occorrenze future; il form richiede l'intervallo "da"/"fino a" (mese/anno o anno) e permette di iniziare la serie prima della singola voce modificata
 - Possibilità di convertire una voce singola in una serie ricorrente durante la modifica
+  * quando modifichi una voce già ricorrente, il form pre‑popola tipo, data inizio e data fine;
+  * se una ricorrenza esiste ma la voce è stata in precedenza scollegata dalla serie (ad es. modificata singolarmente), il sistema *inferrerà* comunque i dettagli basandosi sulla serie esistente e ti proporrà di #riattaccarla#;
+  * cambiando il periodo (spostando indietro o avanti il campo data) la serie viene ricreata e le occorrenze fuori range vengono rimosse
 - Gestione di appartamenti, property managers (PM), e piattaforme (per entrate)
 - **Facile gestione dei Property Managers (PM)**: interfaccia semplice per aggiungere, modificare e assegnare PM alle unità.
   - Quando si modifica la percentuale di un PM, se esistono entrate o spese già associate al PM che utilizzano la vecchia percentuale, il sistema chiede conferma prima di aggiornare automaticamente quelle voci.
@@ -16,6 +19,7 @@ LocazioneTuristica è una semplice ma completa applicazione web per gestire le e
   - Quando si salva una modifica in blocco, viene mostrata una conferma con il messaggio: "Stai modificando X voci, vuoi davvero continuare?".
   - Nota: nella vista Rendiconto le selezioni devono essere tutte dello stesso tipo (solo entrate o solo spese) prima di poter applicare modifiche o eliminazioni in blocco.
 - Allegati per ogni voce (PDF, immagini, fogli di calcolo, ecc.)
+- **Supporto pulizie**: registrazione di interventi di pulizia associati ad appartamenti. Ogni pulizia genera automaticamente una spesa contrassegnata (🧹) e può essere legata a una ditta/servizio personalizzabile; i costi compaiono nelle statistiche mensili.
 - Interfaccia con modali e conferme inline per un'esperienza utente fluida
 - Filtri e vista mensile con riepilogo entrate/spese per mese
 

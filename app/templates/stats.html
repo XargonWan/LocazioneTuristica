@@ -9,7 +9,13 @@
       <div class="col-md-3">
         <label>Anno</label>
         <select id="year-select" class="form-control">
-          <option value="{{ (year if year else now) | default(2025) }}">{{ (year if year else now) | default(2025) }}</option>
+          {% if available_years %}
+            {% for y in available_years %}
+              <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          {% else %}
+            <option value="{{ (year if year else now) | default(2025) }}">{{ (year if year else now) | default(2025) }}</option>
+          {% endif %}
         </select>
       </div>
       <div class="col-md-3">
@@ -41,8 +47,8 @@
       </div>
     </div>
     <div id="stats-totals" class="mb-3 d-flex gap-3">
-      <div><strong>Totale Entrate:</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
-      <div><strong>Totale Spese:</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
+      <div><strong>Totale Entrate (netto, IVA/PM esclusi):</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
+      <div><strong>Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
       <div><strong>Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
     </div>
     <canvas id="monthly-chart"></canvas>
@@ -130,7 +136,7 @@
       document.getElementById('stats-pm-pct').textContent = `${Number(totals.pm_percent || 0).toFixed(2)}%`;
     }
   document.addEventListener('DOMContentLoaded', async () => {
-    const year = new Date().getFullYear()
+    const year = document.getElementById('year-select').value || new Date().getFullYear();
     await loadChart(year)
     const pmSel = document.getElementById('pm-select');
     const compSel = document.getElementById('company-select');

@@ -11,6 +11,10 @@
             <label class="form-label">Nome Ditta</label>
             <input class="form-control" type="text" name="company_name" value="{{ company.company_name }}" required>
           </div>
+          <div class="mb-3 form-check">
+            <input class="form-check-input" type="checkbox" id="companyCleaningFlag" name="is_cleaning_company" value="1" {% if company.is_cleaning_company %}checked{% endif %}>
+            <label class="form-check-label" for="companyCleaningFlag">Ditta di pulizie</label>
+          </div>
           <button class="btn btn-primary" type="submit">Salva</button>
         </form>
         <form method="post" action="/anagrafiche/company/{{ company.id }}/delete" class="mt-2">

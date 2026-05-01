@@ -15,7 +15,7 @@ from app.main import templates
 
 
 @router.get('/stats')
-async def stats_view(request: Request):
+async def stats_view(request: Request, year: int = None):
     if not get_current_user(request):
         return RedirectResponse(url='/login')
     db = SessionLocal()
@@ -23,8 +23,30 @@ async def stats_view(request: Request):
         # Build per-anagrafica totals for the stats page
         from app.models import PropertyManager, Company, Platform, Income, Expense
         from datetime import datetime
-        year = datetime.now().year
-        now = year
+        # determine which years have data
+        years_with_data = set()
+        for inc in db.query(Income.date).all():
+            try:
+                y = int(inc[0][:4])
+                years_with_data.add(y)
+            except Exception:
+                pass
+        for exp in db.query(Expense.date).all():
+            try:
+                y = int(exp[0][:4])
+                years_with_data.add(y)
+            except Exception:
+                pass
+        available_years = sorted(years_with_data)
+        now = datetime.now().year
+        if year is None or year not in available_years:
+            # prefer current year if it has data, otherwise fall back to latest available year
+            if now in available_years:
+                year = now
+            elif available_years:
+                year = available_years[-1]
+            else:
+                year = now
         pms = db.query(PropertyManager).all()
         companies = db.query(Company).all()
         platforms = db.query(Platform).all()
@@ -47,6 +69,16 @@ async def stats_view(request: Request):
                 if pm:
                     pm_amount = float(inc.gross_amount or 0.0) * (float(pm.percent or 0.0) / 100.0)
             pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
+        # subtract any expense payments made to PMs
+        for exp in expenses:
+            try:
+                d = datetime.strptime(exp.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year != year:
+                continue
+            if exp.associated_pm_id:
+                pm_totals[exp.associated_pm_id] = pm_totals.get(exp.associated_pm_id, 0.0) - float(exp.gross_amount or 0.0)
         # company totals (expenses)
         company_totals = {}
         expenses = db.query(Expense).all()
@@ -70,7 +102,7 @@ async def stats_view(request: Request):
                 continue
             if inc.platform_id:
                 platform_totals[inc.platform_id] = platform_totals.get(inc.platform_id, 0.0) + float(inc.gross_amount or 0.0)
-        return templates.TemplateResponse('stats.html', {"request": request, "pms": pms, "companies": companies, "platforms": platforms, "pm_totals": pm_totals, "company_totals": company_totals, "platform_totals": platform_totals, "year": year, "now": now})
+        return templates.TemplateResponse(request, 'stats.html', {"pms": pms, "companies": companies, "platforms": platforms, "pm_totals": pm_totals, "company_totals": company_totals, "platform_totals": platform_totals, "year": year, "now": now, "available_years": available_years})
     finally:
         db.close()
 
@@ -84,6 +116,7 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
             year = datetime.now().year
         incomes = db.query(Income).all()
         expenses = db.query(Expense).all()
+        # note: income values are now reported after VAT and PM deductions
         months = {m: {'income': 0.0, 'expense': 0.0} for m in range(1, 13)}
         total_income = 0.0
         total_pm_paid = 0.0
@@ -100,7 +133,10 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
                         continue
                 if platform_id and inc.platform_id != platform_id:
                     continue
-                amt = float(inc.gross_amount)
+                # Use net_after_pm when available, otherwise compute from net - pm
+                amt = float(getattr(inc, 'net_after_pm', None) or 0.0)
+                if not amt:
+                    amt = float(getattr(inc, 'net_amount', 0.0) or 0.0) - float(getattr(inc, 'pm_amount', 0.0) or 0.0)
                 months[d.month]['income'] += amt
                 total_income += amt
                 total_pm_paid += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
@@ -137,7 +173,7 @@ async def settings_view(request: Request):
         settings = db.query(Settings).all()
     except Exception:
         settings = []
-    return templates.TemplateResponse('settings.html', {"request": request, "settings": settings})
+    return templates.TemplateResponse(request, 'settings.html', {"settings": settings})
 
 
 @router.post('/settings/update')

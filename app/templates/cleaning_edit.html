@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Modifica pulizia</h1>
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/cleaning/{{ cleaning.id }}/edit">
+      <div class="mb-3">
+        <label>Data</label>
+        <input type="date" name="date" class="form-control" required value="{{ cleaning.date }}">
+      </div>
+      <div class="mb-3">
+        <label>Appartamento</label>
+        <select name="apartment_id" class="form-control" required>
+          <option value="">---</option>
+          {% for apt in apartments %}
+          <option value="{{ apt.id }}" {% if cleaning.apartment_id == apt.id %}selected{% endif %}>{{ apt.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>Ditta di pulizie</label>
+        <select name="company_id" class="form-control" id="cleaning_company_select" required>
+          <option value="">---</option>
+          {% for comp in companies %}
+          <option value="{{ comp.id }}" {% if cleaning.company_id == comp.id %}selected{% endif %}>{{ comp.company_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>Servizio</label>
+        <select name="service_id" class="form-control" id="cleaning_service_select">
+          <option value="">personalizzato</option>
+          {% for svc in services %}
+          <option value="{{ svc.id }}" data-amount="{{ svc.default_amount }}" data-is-net="{{ '1' if svc.is_net else '0' }}" data-vat="{{ svc.vat_percent }}" data-company="{{ svc.company_id }}" {% if cleaning.service_id == svc.id %}selected{% endif %}>{{ svc.name }} ({{ svc.default_amount }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>Importo lordo</label>
+        <input type="number" name="gross_amount" step="0.01" class="form-control" id="cleaning_gross" value="{{ cleaning.gross_amount }}">
+      </div>
+      <div class="mb-3">
+        <label>Importo netto</label>
+        <input type="number" name="net_amount" step="0.01" class="form-control" id="cleaning_net" value="{{ cleaning.net_amount }}">
+      </div>
+      <div class="mb-3">
+        <label>IVA (%)</label>
+        <input type="number" name="vat_percent" step="0.01" class="form-control" id="cleaning_vat" value="{{ cleaning.vat_percent }}">
+      </div>
+      <div class="mb-3 form-check">
+        <input type="checkbox" class="form-check-input" id="cleaning_is_net" name="is_net" value="1" {% if cleaning.is_net %}checked{% endif %}>
+        <label class="form-check-label" for="cleaning_is_net">Importo netto</label>
+      </div>
+      <div class="mb-3">
+        <label>Note</label>
+        <textarea name="notes" class="form-control">{{ cleaning.notes }}</textarea>
+      </div>
+      <div class="mb-3">
+        <button class="btn btn-primary">Salva</button>
+        <a class="btn btn-secondary" href="/cleaning">Annulla</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  const svcSel = document.getElementById('cleaning_service_select');
+  const grossInput = document.getElementById('cleaning_gross');
+  const netInput = document.getElementById('cleaning_net');
+  const vatInput = document.getElementById('cleaning_vat');
+  const isNetChk = document.getElementById('cleaning_is_net');
+  const compSel = document.getElementById('cleaning_company_select');
+
+  if(compSel && svcSel){
+    compSel.addEventListener('change', ()=>{
+      const cid = compSel.value;
+      Array.from(svcSel.options).forEach(o=>{
+        if(!o.value) return;
+        o.style.display = (o.getAttribute('data-company') === cid) ? 'block' : 'none';
+      });
+      svcSel.value = '';
+    });
+  }
+
+  svcSel.addEventListener('change', ()=>{
+    const opt = svcSel.options[svcSel.selectedIndex];
+    if(opt && opt.value){
+      const amt = opt.getAttribute('data-amount');
+      const isNet = opt.getAttribute('data-is-net')==='1';
+      const vat = opt.getAttribute('data-vat');
+      const comp = opt.getAttribute('data-company');
+      if(compSel) compSel.value = comp;
+      if(vatInput) vatInput.value = vat;
+      if(isNetChk) isNetChk.checked = isNet;
+      if(isNet){
+        if(netInput) netInput.value = amt;
+        if(grossInput) grossInput.value = '';
+      } else {
+        if(grossInput) grossInput.value = amt;
+        if(netInput) netInput.value = '';
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

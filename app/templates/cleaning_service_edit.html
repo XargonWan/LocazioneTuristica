@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Modifica servizio di pulizia</h1>
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/cleaning/service/{{ service.id }}/edit">
+      <div class="mb-3">
+        <label>Ditta</label>
+        <select name="company_id" class="form-control" required>
+          <option value="">---</option>
+          {% for comp in companies %}
+          <option value="{{ comp.id }}" {% if service.company_id == comp.id %}selected{% endif %}>{{ comp.company_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label>Nome servizio</label>
+        <input type="text" name="name" class="form-control" required value="{{ service.name }}">
+      </div>
+      <div class="mb-3">
+        <label>Importo standard</label>
+        <input type="number" name="default_amount" step="0.01" class="form-control" value="{{ service.default_amount }}">
+      </div>
+      <div class="mb-3 form-check">
+        <input type="checkbox" class="form-check-input" id="svc_is_net" name="is_net" value="1" {% if service.is_net %}checked{% endif %}>
+        <label class="form-check-label" for="svc_is_net">Importo standard netto</label>
+      </div>
+      <div class="mb-3">
+        <label>IVA (%)</label>
+        <input type="number" name="vat_percent" step="0.01" class="form-control" value="{{ service.vat_percent }}">
+      </div>
+      <div class="mb-3">
+        <button class="btn btn-primary">Salva</button>
+        <a class="btn btn-secondary" href="/cleaning/service">Annulla</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

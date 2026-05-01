@@ -50,6 +50,8 @@ class Company(Base):
     tax_id = Column(String, nullable=True)
     iban = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    # indicate if this is a cleaning company (used to filter when selecting services)
+    is_cleaning_company = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -101,6 +103,8 @@ class Expense(Base):
     pm_amount = Column(DECIMAL(10, 2), default=0.0)
     net_after_pm = Column(DECIMAL(10, 2), default=0.0)
     category = Column(String, nullable=True)
+    # flag to indicate this expense corresponds to a cleaning activity
+    is_cleaning = Column(Boolean, default=False)
     associated_pm_id = Column(Integer, ForeignKey("property_manager.id"), nullable=True)
     associated_company_id = Column(Integer, ForeignKey("company.id"), nullable=True)
     recurrence_id = Column(Integer, ForeignKey("recurrence.id"), nullable=True)
@@ -138,6 +142,44 @@ class Income(Base):
     platform = relationship("Platform")
     associated_pm = relationship("PropertyManager")
     recurrence = relationship("Recurrence")
+
+
+class CleaningService(Base):
+    __tablename__ = "cleaning_service"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("company.id"), nullable=False)
+    name = Column(String, nullable=False)
+    default_amount = Column(DECIMAL(10,2), default=0.0)
+    # is the default_amount net? if true IVA will be calculated on top when logging
+    is_net = Column(Boolean, default=False)
+    vat_percent = Column(DECIMAL(5, 2), default=22.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    company = relationship("Company")
+
+
+class Cleaning(Base):
+    __tablename__ = "cleaning"
+    id = Column(Integer, primary_key=True)
+    apartment_id = Column(Integer, ForeignKey("apartment.id"), nullable=False)
+    company_id = Column(Integer, ForeignKey("company.id"), nullable=False)
+    service_id = Column(Integer, ForeignKey("cleaning_service.id"), nullable=True)
+    date = Column(String, nullable=True)
+    gross_amount = Column(DECIMAL(10, 2), default=0.0)
+    vat_percent = Column(DECIMAL(5, 2), default=22.0)
+    net_amount = Column(DECIMAL(10, 2), default=0.0)
+    is_net = Column(Boolean, default=False)
+    notes = Column(Text, nullable=True)
+    expense_id = Column(Integer, ForeignKey("expense.id"), nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    apartment = relationship("Apartment")
+    company = relationship("Company")
+    service = relationship("CleaningService")
+    expense = relationship("Expense")
 
 
 class Attachment(Base):
