@@ -76,7 +76,7 @@ async def expenses_index(request: Request):
                 e.pm_percent = float(getattr(e, 'pm_percent', 0.0) or 0.0)
                 e.pm_amount = float(getattr(e, 'pm_amount', 0.0) or 0.0)
                 e.net_after_pm = float(getattr(e, 'net_after_pm', 0.0) or 0.0)
-        return templates.TemplateResponse(request, "expenses_index.html", {"expenses": expenses, "apartments": apartments, "pms": pms, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date})
+        return templates.TemplateResponse("expenses_index.html", {"request": request, "expenses": expenses, "apartments": apartments, "pms": pms, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date})
     finally:
         db.close()
 
@@ -242,7 +242,7 @@ async def edit_expense_get(request: Request, expense_id: int):
         attached = db.query(Attachment).filter(Attachment.expense_id == e.id).all()
         next_url = request.query_params.get('next') or None
         _ = e.recurrence
-        return templates.TemplateResponse(request, 'expense_edit.html', {"expense": e, "apartments": apartments, "pms": pms, "companies": companies, "attached": attached, "next": next_url})
+        return templates.TemplateResponse('expense_edit.html', {"request": request, "expense": e, "apartments": apartments, "pms": pms, "companies": companies, "attached": attached, "next": next_url})
     finally:
         db.close()
 
@@ -608,7 +608,7 @@ async def incomes_index(request: Request):
                     apt_pm_map[apt.id] = {"percent": float(pm.percent or 0.0) if pm else 0.0, "pm_id": pm.id if pm else None}
                 else:
                     apt_pm_map[apt.id] = {"percent": 0.0, "pm_id": None}
-        return templates.TemplateResponse(request, "incomes_index.html", {"incomes": incomes, "apartments": apartments, "platforms": platforms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "next": next_url, "default_date": default_date})
+        return templates.TemplateResponse("incomes_index.html", {"request": request, "incomes": incomes, "apartments": apartments, "platforms": platforms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "next": next_url, "default_date": default_date})
     finally:
         db.close()
 
@@ -734,7 +734,7 @@ async def edit_income_get(request: Request, income_id: int):
         attached = db.query(Attachment).filter(Attachment.income_id == e.id).all()
         next_url = request.query_params.get('next') or None
         _ = e.recurrence
-        return templates.TemplateResponse(request, 'income_edit.html', {"income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached, "next": next_url})
+        return templates.TemplateResponse('income_edit.html', {"request": request, "income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached, "next": next_url})
     finally:
         db.close()
 

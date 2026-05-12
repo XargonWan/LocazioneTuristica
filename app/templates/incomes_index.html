@@ -31,7 +31,7 @@
         <select name="apartment_id" class="form-control">
           <option value="">---</option>
             {% for a in apartments %}
-            <option value="{{ a.id }}" {% if apartments|length == 1 %}selected{% endif %}>{{ a.name }}</option>
+            <option value="{{ a.id }}" {% if default_apartment_id is defined and a.id == default_apartment_id %}selected{% endif %}>{{ a.name }}</option>
             {% endfor %}
         </select>
       </div>
@@ -45,26 +45,14 @@
         </select>
       </div>
       <div class="mb-3">
-        <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm"> Associata a (PM)</label>
-        <select name="associated_pm_id" class="form-control" id="associated_pm_select" disabled>
+        <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm" {% if default_associated_pm_id %}checked{% endif %}> Associata a (PM)</label>
+        <select name="associated_pm_id" class="form-control" id="associated_pm_select" {% if not default_associated_pm_id %}disabled{% endif %}>
           <option value="">---</option>
           {% for pm in pms %}
           <option value="{{ pm.id }}" {% if default_associated_pm_id is defined and pm.id == default_associated_pm_id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
           {% endfor %}
         </select>
       </div>
-      <script>
-        (function(){
-          const chk = document.getElementById('associate_pm_checkbox');
-          const sel = document.getElementById('associated_pm_select');
-          if(chk && sel){
-            chk.addEventListener('change', ()=>{
-              sel.disabled = !chk.checked;
-              if(!chk.checked){ sel.value = '' }
-            });
-          }
-        })();
-      </script>
       <div class="mb-3">
         <label>Allegati (seleziona più)</label>
         <select name="attachment_ids" class="form-control" multiple>
@@ -79,8 +67,75 @@
       </div>
       <div class="mb-3">
         <label>Percentuale PM (%)</label>
-        <input type="number" name="pm_percent" step="0.01" class="form-control" value="{{ default_pm_percent if default_pm_percent is defined else 0.0 }}">
+        <input type="number" name="pm_percent" step="0.01" class="form-control" id="pm_percent_input" value="{{ default_pm_percent if default_pm_percent is defined else 0.0 }}">
       </div>
+      <script>
+        (function(){
+          const chk = document.getElementById('associate_pm_checkbox');
+          const pmSelect = document.getElementById('associated_pm_select');
+          const apartmentSelect = document.querySelector('select[name="apartment_id"]');
+          const pmPercentInput = document.getElementById('pm_percent_input');
+          const aptPmMap = {{ apt_pm_map|tojson if apt_pm_map is defined else '{}' }};
+
+          function resetPmFields(){
+            if (pmSelect) {
+              pmSelect.value = '';
+              pmSelect.disabled = true;
+            }
+            if (pmPercentInput) {
+              pmPercentInput.value = '0.0';
+            }
+            if (chk) {
+              chk.checked = false;
+            }
+          }
+
+          function syncPmFromApartment(){
+            if (!apartmentSelect || !pmSelect || !chk) {
+              return;
+            }
+
+            const mapEntry = apartmentSelect.value && aptPmMap ? aptPmMap[apartmentSelect.value] : null;
+            if (mapEntry && mapEntry.pm_id) {
+              chk.checked = true;
+              pmSelect.disabled = false;
+              pmSelect.value = String(mapEntry.pm_id);
+              if (pmPercentInput) {
+                pmPercentInput.value = String(mapEntry.percent ?? 0.0);
+              }
+              return;
+            }
+
+            resetPmFields();
+          }
+
+          if(chk && pmSelect){
+            chk.addEventListener('change', ()=>{
+              pmSelect.disabled = !chk.checked;
+              if(!chk.checked){
+                pmSelect.value = '';
+                if (pmPercentInput) {
+                  pmPercentInput.value = '0.0';
+                }
+                return;
+              }
+
+              const mapEntry = apartmentSelect && apartmentSelect.value && aptPmMap ? aptPmMap[apartmentSelect.value] : null;
+              if (mapEntry && mapEntry.pm_id) {
+                pmSelect.value = String(mapEntry.pm_id);
+                if (pmPercentInput) {
+                  pmPercentInput.value = String(mapEntry.percent ?? 0.0);
+                }
+              }
+            });
+          }
+
+          if (apartmentSelect) {
+            apartmentSelect.addEventListener('change', syncPmFromApartment);
+            syncPmFromApartment();
+          }
+        })();
+      </script>
       <div class="mb-3">
         <label>Ricorrenza</label>
         <select name="recurrence" class="form-control">

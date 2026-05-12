@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from app.main import app
 from app.db import SessionLocal
-from app.models import Income, Expense, User, Recurrence
+from app.models import Apartment, Expense, Income, PropertyManager, Recurrence, User
 from app.routers.auth import pwd_context
 
 
@@ -299,6 +299,64 @@ def test_date_param_prefills_form():
     assert r3.status_code == 200
     assert 'value="2025-02-01"' in r3.text
     assert 'overview?year=2025' in r3.text
+
+
+def test_incomes_form_includes_apartment_pm_options_and_mapping():
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        pm = PropertyManager(first_name='Mario', last_name='Rossi', percent=12.5)
+        db.add(pm)
+        db.commit()
+        apt = Apartment(name='A1', property_manager_id=pm.id)
+        db.add(apt)
+        db.commit()
+
+        client = TestClient(app)
+        client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        resp = client.get('/money/incomes')
+
+        assert resp.status_code == 200
+        assert 'id="associate_pm_checkbox"' in resp.text
+        assert f'>{pm.first_name} {pm.last_name}</option>' in resp.text
+        assert 'syncPmFromApartment' in resp.text
+        assert f'"pm_id": {pm.id}' in resp.text
+        assert '"percent": 12.5' in resp.text
+    finally:
+        db.close()
+
+
+def test_add_income_with_apartment_pm_defaults_associated_pm_and_percent():
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        pm = PropertyManager(first_name='Test', last_name='PM', percent=15.0)
+        db.add(pm)
+        db.commit()
+        apt = Apartment(name='A1', property_manager_id=pm.id)
+        db.add(apt)
+        db.commit()
+
+        client = TestClient(app)
+        client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        resp = client.post('/money/incomes/add', data={
+            'gross_amount': '100.0',
+            'vat_percent': '22.0',
+            'pm_percent': '0.0',
+            'date': '2025-10-01',
+            'apartment_id': str(apt.id),
+            'associate_pm': 'on',
+        })
+
+        assert resp.status_code in (200, 303)
+        inc = db.query(Income).order_by(Income.id.desc()).first()
+        assert inc is not None
+        assert inc.associated_pm_id == pm.id
+        assert float(inc.pm_percent) == 15.0
+        assert float(inc.pm_amount) == 15.0
+        assert float(inc.net_after_pm) == 63.0
+    finally:
+        db.close()
 
 
 def test_stats_year_dropdown_shows_data_years_only():

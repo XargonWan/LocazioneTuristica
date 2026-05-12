@@ -4,7 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 from starlette.templating import Jinja2Templates
-from jinja2 import Environment, FileSystemLoader
 
 from .db import init_db, SessionLocal
 from .models import Income, Expense
@@ -12,9 +11,8 @@ from .auth_utils import get_current_user
 
 app = FastAPI(title="LocazioneTuristica")
 
-# Templates with caching disabled
-_env = Environment(loader=FileSystemLoader("app/templates"), cache_size=0)
-templates = Jinja2Templates(env=_env)
+# Templates
+templates = Jinja2Templates(directory="app/templates")
 
 def _format_date(value):
     from datetime import datetime
@@ -223,7 +221,7 @@ async def overview(request: Request):
             if d.year == year:
                 pm_paid_total += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
         pm_paid_pct = round((pm_paid_total / total_income) * 100, 2) if total_income > 0 else 0.0
-        return templates.TemplateResponse(request, "overview.html", {'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
+        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
     finally:
         db.close()
 
@@ -236,7 +234,7 @@ async def overview_post(request: Request):
 @app.get("/login")
 async def login(request: Request):
     # Simple login template, actual POST handled in auth router
-    return templates.TemplateResponse(request, "login.html")
+    return templates.TemplateResponse("login.html", {"request": request})
 
 
 # Include routers

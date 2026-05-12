@@ -21,7 +21,7 @@ async def cleanings_index(request: Request):
         apartments = db.query(Apartment).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
         services = db.query(CleaningService).all()
-        return templates.TemplateResponse(request, "cleanings_index.html", {"cleanings": cleanings, "apartments": apartments, "companies": companies, "services": services})
+        return templates.TemplateResponse("cleanings_index.html", {"request": request, "cleanings": cleanings, "apartments": apartments, "companies": companies, "services": services})
     finally:
         db.close()
 
@@ -100,7 +100,7 @@ async def edit_cleaning_get(request: Request, cleaning_id: int):
         apartments = db.query(Apartment).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
         services = db.query(CleaningService).filter(CleaningService.company_id == c.company_id).all()
-        return templates.TemplateResponse(request, 'cleaning_edit.html', {"cleaning": c, "apartments": apartments, "companies": companies, "services": services})
+        return templates.TemplateResponse('cleaning_edit.html', {"request": request, "cleaning": c, "apartments": apartments, "companies": companies, "services": services})
     finally:
         db.close()
 
@@ -204,7 +204,7 @@ async def services_index(request: Request):
     try:
         services = db.query(CleaningService).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
-        return templates.TemplateResponse(request, "cleaning_services.html", {"services": services, "companies": companies})
+        return templates.TemplateResponse("cleaning_services.html", {"request": request, "services": services, "companies": companies})
     finally:
         db.close()
 
@@ -241,7 +241,7 @@ async def edit_service_get(request: Request, service_id: int):
         if not svc:
             return RedirectResponse(url='/cleaning/service')
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
-        return templates.TemplateResponse(request, 'cleaning_service_edit.html', {"service": svc, "companies": companies})
+        return templates.TemplateResponse('cleaning_service_edit.html', {"request": request, "service": svc, "companies": companies})
     finally:
         db.close()
 

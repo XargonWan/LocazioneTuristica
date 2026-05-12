@@ -65,53 +65,58 @@
                                   <small class="ms-3 text-danger">PM dovuto: €{{ '%.2f'|format(m.pm_due) }}</small>
                                 {% endif %}
                               </div>
-                            </div>
-                            <div class="d-flex align-items-center">
-                              <a href="/money/incomes?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-success">+ Entrata</a>
-                              <a href="/money/expenses?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-danger ms-1">+ Spesa</a>
-                            </div>
-                          </div>
-                          {% if entries_by_month[m.month] %}
-                          <div class="mt-2 month-details" id="month-details-{{ m.month }}">
-                            <div>
-                              <div class="table-responsive">
-                                <table class="table table-sm mb-0">
-                                  <thead>
-                                    <tr>
-                                      <th scope="col"></th>
-                                      <th scope="col">Causale</th>
-                                      <th scope="col">Data</th>
-                                      <th scope="col" class="text-end">Importo</th>
-                                      <th scope="col">&nbsp;</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
+                           </div>
+                             <div class="d-flex align-items-center">
+                               <a href="/money/incomes?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-success">+ Entrata</a>
+                               <a href="/money/expenses?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-danger ms-1">+ Spesa</a>
+                             </div>
+                           </div>
+                         </li>
+                         {% if entries_by_month[m.month] %}
+                         <li class="list-group-item month-details" id="month-details-{{ m.month }}">
+                           <div>
+                             <div class="table-responsive">
+                               <table class="table table-sm mb-0">
+                                 <thead>
+                                   <tr>
+                                     <th scope="col"></th>
+                                     <th scope="col">Causale</th>
+                                     <th scope="col">Data</th>
+                                     <th scope="col" class="text-end">Importo</th>
+                                     <th scope="col">&nbsp;</th>
+                                   </tr>
+                                 </thead>
+                                 <tbody>
                                     {% for item in entries_by_month[m.month] %}
-                                      <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
-                                        <td class="align-middle"><input type="checkbox" class="form-check-input sel-ov d-none" value="{{ item.id }}" data-type="{{ item.type }}"></td>
-                                        <td>{{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}</td>
-                                        <td>{{ item.date|format_date }}</td>
-                                        <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
-                                        <td class="text-end">
-                                          {% if request.session.get('role') == 'admin' %}
-                                            {% if item.type == 'income' %}
-                                              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#incomeModal-{{ item.id }}">Dettagli</button>
-                                            {% else %}
-                                              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#expenseModal-{{ item.id }}">Dettagli</button>
+                                        <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
+                                          <td class="align-middle"><input type="checkbox" class="form-check-input sel-ov d-none" value="{{ item.id }}" data-type="{{ item.type }}"></td>
+                                          <td>
+                                            {% if item.cleaning_emoji %}
+                                              <a href="/cleaning/from-expense/{{ item.id }}" title="Gestisci pulizia" class="text-decoration-none">{{ item.cleaning_emoji }}</a>
                                             {% endif %}
-                                          {% endif %}
-                                        </td>
-                                      </tr>
+                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}
+                                          </td>
+                                          <td>{{ item.date|format_date }}</td>
+                                          <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
+                                          <td class="text-end">
+                                            {% if request.session.get('role') == 'admin' %}
+                                              {% if item.type == 'income' %}
+                                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#incomeModal-{{ item.id }}">Dettagli</button>
+                                              {% else %}
+                                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#expenseModal-{{ item.id }}">Dettagli</button>
+                                              {% endif %}
+                                            {% endif %}
+                                          </td>
+                                        </tr>
                                     {% endfor %}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          </div>
-                          {% else %}
-                            {# no entries for this month: do not render the table or 'Nessuna voce' row #}
-                          {% endif %}
-                        </li>
+                                 </tbody>
+                               </table>
+                             </div>
+                           </div>
+                         </li>
+                         {% else %}
+                             {# no entries for this month: do not render the table or 'Nessuna voce' row #}
+                         {% endif %}
                         {% endfor %}
                       </ul>
                     </div>

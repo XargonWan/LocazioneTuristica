@@ -70,6 +70,7 @@ async def stats_view(request: Request, year: int = None):
                     pm_amount = float(inc.gross_amount or 0.0) * (float(pm.percent or 0.0) / 100.0)
             pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
         # subtract any expense payments made to PMs
+        expenses = db.query(Expense).all()
         for exp in expenses:
             try:
                 d = datetime.strptime(exp.date, '%Y-%m-%d')
@@ -81,7 +82,6 @@ async def stats_view(request: Request, year: int = None):
                 pm_totals[exp.associated_pm_id] = pm_totals.get(exp.associated_pm_id, 0.0) - float(exp.gross_amount or 0.0)
         # company totals (expenses)
         company_totals = {}
-        expenses = db.query(Expense).all()
         for exp in expenses:
             try:
                 d = datetime.strptime(exp.date, '%Y-%m-%d')
