@@ -1,3 +1,4 @@
+import asyncio
 from fastapi.testclient import TestClient
 import subprocess, os
 
@@ -8,10 +9,10 @@ from app.db import engine
 engine.dispose()
 from app.main import app
 from app.db import SessionLocal
-from app.models import Income, Expense, Recurrence, Company, Cleaning, CleaningService, Apartment
+from app.models import Income, Expense, Recurrence, Company, Cleaning, CleaningService, Apartment, User
 
 client = TestClient(app)
-client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'}, follow_redirects=False)
 
 
 def test_bulk_edit_incomes():
@@ -56,6 +57,55 @@ def test_bulk_delete_incomes_series():
         assert rec is None
     finally:
         db.commit(); db.close()
+
+
+def test_incomes_focus_income_shows_linked_entry_outside_recent_limit(monkeypatch):
+    from datetime import date, timedelta
+    from app.routers import money as money_router
+
+    db = SessionLocal()
+    focus_income = None
+    created_ids = []
+    user = None
+    try:
+        user = db.query(User).filter(User.username == 'testadmin').first()
+        assert user is not None
+        focus_income = Income(apartment_id=None, platform_id=None, date='2024-01-01', gross_amount=111.0, vat_percent=22.0, net_amount=86.58, pm_percent=0.0, pm_amount=0.0, net_after_pm=86.58, notes='focus-income')
+        db.add(focus_income)
+        db.commit()
+        db.refresh(focus_income)
+        created_ids.append(focus_income.id)
+
+        start_date = date(2025, 1, 1)
+        for offset in range(50):
+            curr_date = start_date + timedelta(days=offset)
+            inc = Income(apartment_id=None, platform_id=None, date=curr_date.isoformat(), gross_amount=100.0 + offset, vat_percent=22.0, net_amount=78.0 + offset, pm_percent=0.0, pm_amount=0.0, net_after_pm=78.0 + offset, notes=f'recent-{offset}')
+            db.add(inc)
+            db.flush()
+            created_ids.append(inc.id)
+        db.commit()
+
+        captured = {}
+
+        def fake_template_response(request, name, context):
+            captured['name'] = name
+            captured['context'] = context
+            return context
+
+        monkeypatch.setattr(money_router.templates, 'TemplateResponse', fake_template_response)
+
+        request = type('Req', (), {'session': {'user_id': user.id, 'role': 'admin'}, 'query_params': {'focus_income_id': str(focus_income.id)}})()
+        asyncio.run(money_router.incomes_index(request))
+
+        assert captured['name'] == 'incomes_index.html'
+        assert captured['context']['focus_income_id'] == focus_income.id
+        assert captured['context']['incomes'][0].id == focus_income.id
+        assert any(inc.id == focus_income.id for inc in captured['context']['incomes'])
+    finally:
+        if created_ids:
+            db.query(Income).filter(Income.id.in_(created_ids)).delete(synchronize_session=False)
+            db.commit()
+        db.close()
 
 
 def test_bulk_edit_expenses():
@@ -156,6 +206,12 @@ def test_overview_page_net_calculation():
 
 def test_create_cleaning_creates_flagged_expense():
     db = SessionLocal()
+    cl = None
+    exp = None
+    inc = None
+    svc = None
+    comp = None
+    apt = None
     try:
         # create a cleaning company and service
         comp = Company(company_name='CleanCo', is_cleaning_company=True)
@@ -165,12 +221,15 @@ def test_create_cleaning_creates_flagged_expense():
         # create an apartment to reference
         apt = Apartment(name='A1')
         db.add(apt); db.commit(); db.refresh(apt)
+        inc = Income(apartment_id=apt.id, platform_id=None, date='2025-06-01', gross_amount=100.0, vat_percent=22.0, net_amount=78.0, pm_percent=10.0, pm_amount=10.0, net_after_pm=68.0, notes='prenotazione')
+        db.add(inc); db.commit(); db.refresh(inc)
         # call cleaning add endpoint
-        resp = client.post('/cleaning/add', data={'date':'2025-06-01','apartment_id':apt.id,'company_id':comp.id,'service_id':svc.id})
+        resp = client.post('/cleaning/add', data={'date':'2025-06-01','apartment_id':apt.id,'income_id':inc.id,'company_id':comp.id,'service_id':svc.id})
         assert resp.status_code in (200, 303)
         # verify cleaning record created
         cl = db.query(Cleaning).filter(Cleaning.apartment_id == apt.id, Cleaning.company_id == comp.id).first()
         assert cl is not None
+        assert cl.income_id == inc.id
         # expense should exist and be flagged
         exp = db.query(Expense).filter(Expense.id == cl.expense_id).first()
         assert exp is not None
@@ -184,6 +243,8 @@ def test_create_cleaning_creates_flagged_expense():
             db.delete(cl)
         if svc:
             db.delete(svc)
+        if inc:
+            db.delete(inc)
         if comp:
             db.delete(comp)
         if apt:

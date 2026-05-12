@@ -66,6 +66,7 @@ if not cur.fetchone():
         CREATE TABLE cleaning (
             id INTEGER PRIMARY KEY,
             apartment_id INTEGER NOT NULL,
+            income_id INTEGER,
             company_id INTEGER NOT NULL,
             service_id INTEGER,
             date TEXT,
@@ -83,6 +84,10 @@ if not cur.fetchone():
     )
 else:
     print('cleaning table already exists')
+    cur.execute("PRAGMA table_info(cleaning)")
+    cols = [row[1] for row in cur.fetchall()]
+    if 'income_id' not in cols:
+        try_exec("ALTER TABLE cleaning ADD COLUMN income_id INTEGER;")
 
 conn.close()
 print('Done.')

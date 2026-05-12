@@ -188,13 +188,13 @@
     </form>
     <ul class="list-group mt-3">
       {% for e in incomes %}
-      <li class="list-group-item d-flex justify-content-between align-items-center">
+      <li id="income-row-{{ e.id }}" class="list-group-item d-flex justify-content-between align-items-center{% if focus_income_id is defined and focus_income_id == e.id %} list-group-item-warning{% endif %}">
         <div class="form-check me-3 d-none multi-select-checkbox">
           <input class="form-check-input sel-income" type="checkbox" value="{{ e.id }}" id="selIncome-{{ e.id }}">
         </div>
         <div>
           <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }})</div>
-          <small class="text-muted">{{ e.notes }}</small>
+          <small class="text-muted">{{ e.notes or ('#' ~ e.id) }}{% if e.cleaning_emoji %} <a href="/cleaning?apartment_id={{ e.apartment_id }}&income_id={{ e.id }}&date={{ e.date }}&next={{ (next if next is defined and next else '/money/incomes')|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ e.cleaning_emoji }}</a>{% endif %}</small>
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}
@@ -226,7 +226,7 @@
                   <p><strong>PM percentuale:</strong> {{ '%.2f'|format(e.pm_percent) }}%</p>
                   <p><strong>PM importo:</strong> €{{ '%.2f'|format(e.pm_amount) }}</p>
                 {% endif %}
-                <p><strong>Note:</strong> {{ e.notes or '-' }}</p>
+                <p><strong>Note:</strong> {{ e.notes or '-' }}{% if e.cleaning_emoji %} <a href="/cleaning?apartment_id={{ e.apartment_id }}&income_id={{ e.id }}&date={{ e.date }}&next={{ (next if next is defined and next else '/money/incomes')|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ e.cleaning_emoji }}</a>{% endif %}</p>
                 <p><strong>Allegati:</strong></p>
                 <ul>
                   {% for a in (attachments_by_income.get(e.id) if attachments_by_income else []) %}
@@ -407,6 +407,7 @@
   // Auto-fill PM percent when apartment selection changes (uses apt_pm_map passed from router)
   document.addEventListener('DOMContentLoaded', function(){
     const aptPmMap = {{ apt_pm_map|tojson if apt_pm_map is defined else '{}' }};
+    const focusIncomeId = {{ focus_income_id|tojson if focus_income_id is defined else 'null' }};
     const aptSelect = document.querySelector('select[name="apartment_id"]');
     const pmPercentInput = document.querySelector('input[name="pm_percent"]');
     if (aptSelect && pmPercentInput) {
@@ -424,6 +425,23 @@
             }
           }
         });
+    }
+
+    if (focusIncomeId) {
+      const row = document.getElementById(`income-row-${focusIncomeId}`);
+      if (row) {
+        row.scrollIntoView({ block: 'center' });
+      }
+
+      const modalEl = document.getElementById(`incomeModal-${focusIncomeId}`);
+      if (modalEl && window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      } else {
+        const detailBtn = document.querySelector(`[data-bs-target="#incomeModal-${focusIncomeId}"]`);
+        if (detailBtn) {
+          detailBtn.click();
+        }
+      }
     }
   });
 </script>

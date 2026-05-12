@@ -163,6 +163,7 @@ class Cleaning(Base):
     __tablename__ = "cleaning"
     id = Column(Integer, primary_key=True)
     apartment_id = Column(Integer, ForeignKey("apartment.id"), nullable=False)
+    income_id = Column(Integer, ForeignKey("income.id"), nullable=True)
     company_id = Column(Integer, ForeignKey("company.id"), nullable=False)
     service_id = Column(Integer, ForeignKey("cleaning_service.id"), nullable=True)
     date = Column(String, nullable=True)
@@ -177,6 +178,7 @@ class Cleaning(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
     apartment = relationship("Apartment")
+    income = relationship("Income")
     company = relationship("Company")
     service = relationship("CleaningService")
     expense = relationship("Expense")

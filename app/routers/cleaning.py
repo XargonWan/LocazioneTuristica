@@ -3,7 +3,7 @@ from typing import List
 from fastapi.responses import RedirectResponse
 from starlette.status import HTTP_303_SEE_OTHER
 from app.db import SessionLocal
-from app.models import Cleaning, CleaningService, Company, Apartment, Expense
+from app.models import Cleaning, CleaningService, Company, Apartment, Expense, Income
 from app.auth_utils import admin_required, get_current_user
 from app.debug import log_request_form
 
@@ -17,11 +17,26 @@ async def cleanings_index(request: Request):
         return RedirectResponse(url='/login')
     db = SessionLocal()
     try:
+        default_income_id = request.query_params.get('income_id')
+        default_apartment_id = request.query_params.get('apartment_id')
+        default_date = request.query_params.get('date') or ''
+        next_url = request.query_params.get('next') or None
+        linked_income = None
+        if default_income_id:
+            try:
+                linked_income = db.query(Income).filter(Income.id == int(default_income_id)).first()
+            except Exception:
+                linked_income = None
+        if linked_income:
+            if not default_apartment_id and linked_income.apartment_id:
+                default_apartment_id = linked_income.apartment_id
+            if not default_date and linked_income.date:
+                default_date = linked_income.date
         cleanings = db.query(Cleaning).order_by(Cleaning.date.desc()).limit(50).all()
         apartments = db.query(Apartment).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
         services = db.query(CleaningService).all()
-        return templates.TemplateResponse("cleanings_index.html", {"request": request, "cleanings": cleanings, "apartments": apartments, "companies": companies, "services": services})
+        return templates.TemplateResponse(request, "cleanings_index.html", {"cleanings": cleanings, "apartments": apartments, "companies": companies, "services": services, "default_income_id": default_income_id, "default_apartment_id": default_apartment_id, "default_date": default_date, "next": next_url, "linked_income": linked_income})
     finally:
         db.close()
 
@@ -30,6 +45,7 @@ async def cleanings_index(request: Request):
 async def add_cleaning(request: Request,
                        date: str = Form(...),
                        apartment_id: int = Form(...),
+                       income_id: int = Form(None),
                        company_id: int = Form(...),
                        service_id: int = Form(None),
                        gross_amount: float = Form(None),
@@ -42,6 +58,10 @@ async def add_cleaning(request: Request,
     await log_request_form(request)
     db = SessionLocal()
     try:
+        if income_id:
+            linked_income = db.query(Income).filter(Income.id == income_id).first()
+            if linked_income and linked_income.apartment_id:
+                apartment_id = linked_income.apartment_id
         # ensure vat_percent is float for arithmetic
         vat_percent = float(vat_percent or 0.0)
         # determine amounts based on provided info
@@ -66,13 +86,13 @@ async def add_cleaning(request: Request,
             gross_amount = float(gross_amount or 0.0)
             net_amount = round(gross_amount * (1 - vat_percent / 100.0), 2)
         # create cleaning record
-        c = Cleaning(date=date, apartment_id=apartment_id, company_id=company_id,
+        c = Cleaning(date=date, apartment_id=apartment_id, income_id=income_id, company_id=company_id,
                      service_id=service_id, gross_amount=gross_amount,
                      net_amount=net_amount, vat_percent=vat_percent,
                      is_net=use_net, notes=notes)
         db.add(c)
         db.commit()
-        # create linked expense
+        # Cleaning expenses never generate PM shares.
         e = Expense(apartment_id=apartment_id, date=date, gross_amount=gross_amount,
                     vat_percent=vat_percent, net_amount=net_amount,
                     associated_company_id=company_id, is_cleaning=True, notes=notes)
@@ -100,7 +120,8 @@ async def edit_cleaning_get(request: Request, cleaning_id: int):
         apartments = db.query(Apartment).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
         services = db.query(CleaningService).filter(CleaningService.company_id == c.company_id).all()
-        return templates.TemplateResponse('cleaning_edit.html', {"request": request, "cleaning": c, "apartments": apartments, "companies": companies, "services": services})
+        linked_income = db.query(Income).filter(Income.id == c.income_id).first() if c.income_id else None
+        return templates.TemplateResponse(request, 'cleaning_edit.html', {"cleaning": c, "apartments": apartments, "companies": companies, "services": services, "linked_income": linked_income})
     finally:
         db.close()
 
@@ -110,6 +131,7 @@ async def edit_cleaning_post(request: Request,
                              cleaning_id: int,
                              date: str = Form(...),
                              apartment_id: int = Form(...),
+                             income_id: int = Form(None),
                              company_id: int = Form(...),
                              service_id: int = Form(None),
                              gross_amount: float = Form(None),
@@ -125,6 +147,10 @@ async def edit_cleaning_post(request: Request,
         c = db.query(Cleaning).filter(Cleaning.id == cleaning_id).first()
         if not c:
             return RedirectResponse(url='/cleaning')
+        if income_id:
+            linked_income = db.query(Income).filter(Income.id == income_id).first()
+            if linked_income and linked_income.apartment_id:
+                apartment_id = linked_income.apartment_id
         use_net = is_net == '1'
         vat_percent = float(vat_percent or 0.0)
         # service defaults if chosen
@@ -148,6 +174,7 @@ async def edit_cleaning_post(request: Request,
         # update cleaning
         c.date = date
         c.apartment_id = apartment_id
+        c.income_id = income_id
         c.company_id = company_id
         c.service_id = service_id
         c.gross_amount = gross_amount
@@ -204,7 +231,7 @@ async def services_index(request: Request):
     try:
         services = db.query(CleaningService).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
-        return templates.TemplateResponse("cleaning_services.html", {"request": request, "services": services, "companies": companies})
+        return templates.TemplateResponse(request, "cleaning_services.html", {"services": services, "companies": companies})
     finally:
         db.close()
 
@@ -241,7 +268,7 @@ async def edit_service_get(request: Request, service_id: int):
         if not svc:
             return RedirectResponse(url='/cleaning/service')
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
-        return templates.TemplateResponse('cleaning_service_edit.html', {"request": request, "service": svc, "companies": companies})
+        return templates.TemplateResponse(request, 'cleaning_service_edit.html', {"service": svc, "companies": companies})
     finally:
         db.close()
 

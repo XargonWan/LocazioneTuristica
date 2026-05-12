@@ -5,16 +5,26 @@
 <div class="card">
   <div class="card-body">
     <form method="post" action="/cleaning/add">
+      <input type="hidden" name="income_id" value="{{ default_income_id if default_income_id else '' }}">
+      <input type="hidden" name="next" value="{{ next if next else '' }}">
+      {% if linked_income %}
+      <div class="alert alert-info">
+        Nuova pulizia collegata all'entrata #{{ linked_income.id }} del {{ linked_income.date|format_date }}.
+      </div>
+      {% endif %}
       <div class="mb-3">
         <label>Data</label>
-        <input type="date" name="date" class="form-control" required>
+        <input type="date" name="date" class="form-control" required value="{{ default_date if default_date else '' }}">
       </div>
       <div class="mb-3">
         <label>Appartamento</label>
-        <select name="apartment_id" class="form-control" required>
+        {% if linked_income and default_apartment_id %}
+        <input type="hidden" name="apartment_id" value="{{ default_apartment_id }}">
+        {% endif %}
+        <select name="apartment_id" class="form-control" required {% if linked_income and default_apartment_id %}disabled{% endif %}>
           <option value="">---</option>
           {% for apt in apartments %}
-          <option value="{{ apt.id }}">{{ apt.name }}</option>
+          <option value="{{ apt.id }}" {% if default_apartment_id and (default_apartment_id|string) == (apt.id|string) %}selected{% endif %}>{{ apt.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -66,7 +76,7 @@
       <li class="list-group-item d-flex justify-content-between align-items-center">
         <div>
           {{ c.date|format_date }} - {{ c.apartment.name if c.apartment else '-' }} - €{{ '%.2f'|format(c.gross_amount) }}
-          <small class="text-muted">{{ c.company.company_name if c.company else '' }}{% if c.service %} / {{ c.service.name }}{% endif %}</small>
+          <small class="text-muted">{{ c.company.company_name if c.company else '' }}{% if c.service %} / {{ c.service.name }}{% endif %}{% if c.income_id %} / <a href="/money/incomes?focus_income_id={{ c.income_id }}#income-row-{{ c.income_id }}" title="Apri l'entrata collegata">Entrata #{{ c.income_id }}</a>{% endif %}</small>
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}

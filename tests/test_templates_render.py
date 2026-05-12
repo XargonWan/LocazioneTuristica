@@ -29,9 +29,13 @@ def test_company_cleaning_checkbox_and_badge():
 
 def test_cleaning_templates_render():
     # basic smoke test for cleaning pages
-    rendered = templates.env.get_template('cleanings_index.html').render(request=R(), cleanings=[], apartments=[], companies=[], services=[])
+    linked_income = type('I', (), {'id': 1, 'date': '2025-01-01'})
+    fake_cleaning = type('C', (), {'id': 1, 'date': '2025-01-01', 'gross_amount': 30.0, 'income_id': 1, 'apartment': type('A', (), {'name': 'APT'}), 'company': type('CO', (), {'company_name': 'CleanCo'}), 'service': type('S', (), {'name': 'Standard'})})
+    rendered = templates.env.get_template('cleanings_index.html').render(request=R(), cleanings=[fake_cleaning], apartments=[], companies=[], services=[], default_income_id=1, default_apartment_id=2, default_date='2025-01-01', next='/money/incomes', linked_income=linked_income)
     assert 'Pulizie' in rendered or 'Appartamento' in rendered
-    rendered2 = templates.env.get_template('cleaning_edit.html').render(request=R(), cleaning=type('C', (), {'id':1,'date':'2025-01-01','apartment_id':None,'company_id':None,'service_id':None,'gross_amount':0,'net_amount':0,'vat_percent':22,'is_net':False,'notes':''}), apartments=[], companies=[], services=[])
+    assert 'name="income_id"' in rendered
+    assert '/money/incomes?focus_income_id=1#income-row-1' in rendered
+    rendered2 = templates.env.get_template('cleaning_edit.html').render(request=R(), cleaning=type('C', (), {'id':1,'date':'2025-01-01','apartment_id':None,'income_id':1,'company_id':None,'service_id':None,'gross_amount':0,'net_amount':0,'vat_percent':22,'is_net':False,'notes':''}), apartments=[], companies=[], services=[], linked_income=linked_income)
     assert 'Servizio' in rendered2
     rendered3 = templates.env.get_template('cleaning_services.html').render(request=R(), services=[], companies=[])
     assert 'Nome servizio' in rendered3
@@ -42,6 +46,7 @@ def test_incomes_template_shows_pm_and_delete_modal():
     fake_inc = type("X", (), {
         "id": 1,
         "date": "2025-12-01",
+        "apartment_id": 7,
         "gross_amount": 100,
         "net_amount": 78.0,
         "vat_percent": 22.0,
@@ -49,8 +54,9 @@ def test_incomes_template_shows_pm_and_delete_modal():
         "pm_amount": 10.0,
         "associated_pm_name": "PM One",
         "notes": "Incasso pulito",
+        "cleaning_emoji": "🧹",
     })
-    rendered = templates.env.get_template("incomes_index.html").render(request=R(), incomes=[fake_inc], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
+    rendered = templates.env.get_template("incomes_index.html").render(request=R(), incomes=[fake_inc], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes", focus_income_id=1)
     assert "PM One" in rendered
     # new recurrence fields should be available even in index/add form
     assert 'recurrence-range' in rendered
@@ -60,6 +66,12 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'id="associate_pm_checkbox"' in rendered
     # cleaning checkbox belongs on expenses page; not relevant here
     # (we just ensure incomes template doesn't blow up)
+    assert 'Registra una pulizia per questa entrata' in rendered
+    assert '/cleaning?apartment_id=7&income_id=1&date=2025-12-01' in rendered
+    assert 'id="income-row-1"' in rendered
+    assert 'list-group-item-warning' in rendered
+    assert 'const focusIncomeId = 1;' in rendered
+    assert 'bootstrap.Modal.getOrCreateInstance' in rendered
     # edit toggles should not appear when next parameter is used (add-from-overview)
     assert 'id="editModeToggleExp"' not in rendered
     assert 'id="editModeToggle"' not in rendered
@@ -71,7 +83,7 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'selectAllIncomesLabel' in rendered
     # also simulate an income with recurrence to see detail text
     fake_r = type('R', (), {'start_date':'2025-01-01','end_date':'2025-06-01'})
-    fake_inc2 = type('X', (), {'id': 2,'date':'2025-01-01','gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':10.0,'associated_pm_name':'PM One','notes':'Incasso pulito','recurrence': fake_r})
+    fake_inc2 = type('X', (), {'id': 2,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':10.0,'associated_pm_name':'PM One','notes':'Incasso pulito','recurrence': fake_r, 'cleaning_emoji': '🧹'})
     rendered3 = templates.env.get_template('incomes_index.html').render(request=R(), incomes=[fake_inc2], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
     assert 'Ricorrenza:' in rendered3
     # plus button for expense creation should appear on month header
@@ -109,11 +121,11 @@ def test_expenses_template_title_and_delete_modal():
         "notes": "Riparazione caldaia",
         "is_cleaning": False,
     })
-    # create a cleaning expense too to verify emoji
+    # create a cleaning expense too to verify emoji is not shown on expenses anymore
     fake_clean = type("X", (), {"id": 11, "date": "2025-12-02", "gross_amount": 50, "net_amount": 41.0, "vat_percent": 22.0, "pm_percent": 0.0, "pm_amount": 0.0, "net_after_pm": 41.0, "associated_pm_name": None, "notes": "Pulizia standard", "is_cleaning": True})
     rendered = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e, fake_clean], apartments=[], attachments=[], pms=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
     assert "Dettagli Spesa Riparazione caldaia" in rendered
-    assert '🧹' in rendered
+    assert '🧹' not in rendered
     # verify the new wording for PM association
     assert "Pagamento a (PM)" in rendered
     # percentage field should no longer be present in the add form (it still shows in modal details)

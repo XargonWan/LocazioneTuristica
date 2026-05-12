@@ -33,6 +33,15 @@ def init_db():
                     cur.execute("ALTER TABLE company ADD COLUMN is_cleaning_company INTEGER DEFAULT 0;")
                 except Exception:
                     pass
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cleaning'")
+            if cur.fetchone():
+                cur.execute("PRAGMA table_info(cleaning)")
+                cols = [row[1] for row in cur.fetchall()]
+                if 'income_id' not in cols:
+                    try:
+                        cur.execute("ALTER TABLE cleaning ADD COLUMN income_id INTEGER;")
+                    except Exception:
+                        pass
             conn.commit()
         finally:
             conn.close()

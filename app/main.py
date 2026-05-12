@@ -188,7 +188,7 @@ async def overview(request: Request):
                         associated_pm_name = f"{inc.associated_pm.first_name} {inc.associated_pm.last_name}"
                 except Exception:
                     associated_pm_name = None
-                entries_by_month[d.month].append({'type': 'income', 'date': d, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(inc, 'pm_amount', 0.0) or 0.0)})
+                entries_by_month[d.month].append({'type': 'income', 'date': d, 'raw_date': inc.date, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'apartment_id': getattr(inc, 'apartment_id', None), 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(inc, 'pm_amount', 0.0) or 0.0), 'cleaning_emoji': '🧹' if getattr(inc, 'apartment_id', None) else ''})
                 # include net_amount so overview modals can display netto computed from VAT
                 entries_by_month[d.month][-1]['net_amount'] = float(getattr(inc, 'net_amount', 0.0) or 0.0)
         for exp in expenses:
@@ -204,7 +204,7 @@ async def overview(request: Request):
                 except Exception:
                     associated_pm_name = None
                 # expenses no longer expose PM percentage/amount
-                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)})
+                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': 0.0, 'pm_amount': 0.0, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)})
         # Sort entries in each month by date ascending (earliest first)
         for m in range(1,13):
             entries_by_month[m].sort(key=lambda x: x['date'], reverse=False)
@@ -221,7 +221,7 @@ async def overview(request: Request):
             if d.year == year:
                 pm_paid_total += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
         pm_paid_pct = round((pm_paid_total / total_income) * 100, 2) if total_income > 0 else 0.0
-        return templates.TemplateResponse("overview.html", {"request": request, 'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
+        return templates.TemplateResponse(request, "overview.html", {'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
     finally:
         db.close()
 
@@ -234,7 +234,7 @@ async def overview_post(request: Request):
 @app.get("/login")
 async def login(request: Request):
     # Simple login template, actual POST handled in auth router
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html", {})
 
 
 # Include routers

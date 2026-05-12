@@ -50,15 +50,14 @@ async def expenses_index(request: Request):
                 pm = db.query(PropertyManager).filter(PropertyManager.id == default_associated_pm_id).first()
                 if pm:
                     default_pm_percent = float(pm.percent or 0.0)
-        # build a mapping for apartment to its PM percent for client-side default behavior
-            # build a mapping for apartment to its PM percent and PM id for client-side default behavior (used in JS)
-            apt_pm_map = {}
-            for apt in apartments:
-                if apt.property_manager_id:
-                    pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
-                    apt_pm_map[apt.id] = {"percent": float(pm.percent or 0.0) if pm else 0.0, "pm_id": pm.id if pm else None}
-                else:
-                    apt_pm_map[apt.id] = {"percent": 0.0, "pm_id": None}
+        # build a mapping for apartment to PM metadata used by the client-side defaults
+        apt_pm_map = {}
+        for apt in apartments:
+            if apt.property_manager_id:
+                pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
+                apt_pm_map[apt.id] = {"percent": float(pm.percent or 0.0) if pm else 0.0, "pm_id": pm.id if pm else None}
+            else:
+                apt_pm_map[apt.id] = {"percent": 0.0, "pm_id": None}
         next_url = request.query_params.get('next') or None
         default_date = request.query_params.get('date') or ''
         # Prefetch associated PM names and numeric fields to avoid lazy-loading in templates
@@ -76,7 +75,7 @@ async def expenses_index(request: Request):
                 e.pm_percent = float(getattr(e, 'pm_percent', 0.0) or 0.0)
                 e.pm_amount = float(getattr(e, 'pm_amount', 0.0) or 0.0)
                 e.net_after_pm = float(getattr(e, 'net_after_pm', 0.0) or 0.0)
-        return templates.TemplateResponse("expenses_index.html", {"request": request, "expenses": expenses, "apartments": apartments, "pms": pms, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date})
+        return templates.TemplateResponse(request, "expenses_index.html", {"expenses": expenses, "apartments": apartments, "pms": pms, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date})
     finally:
         db.close()
 
@@ -242,7 +241,12 @@ async def edit_expense_get(request: Request, expense_id: int):
         attached = db.query(Attachment).filter(Attachment.expense_id == e.id).all()
         next_url = request.query_params.get('next') or None
         _ = e.recurrence
-        return templates.TemplateResponse('expense_edit.html', {"request": request, "expense": e, "apartments": apartments, "pms": pms, "companies": companies, "attached": attached, "next": next_url})
+        # collect all siblings in the same series
+        series_items = []
+        series_recurrence_id = e.recurrence_id or (inferred.id if inferred else None)
+        if series_recurrence_id:
+            series_items = db.query(Expense).filter(Expense.recurrence_id == series_recurrence_id).order_by(Expense.date).all()
+        return templates.TemplateResponse(request, 'expense_edit.html', {"expense": e, "apartments": apartments, "pms": pms, "companies": companies, "attached": attached, "next": next_url, "series_items": series_items})
     finally:
         db.close()
 
@@ -546,9 +550,21 @@ async def incomes_index(request: Request):
     db = SessionLocal()
     try:
         from sqlalchemy.orm import joinedload
+        focus_income_id = None
+        focus_income_raw = request.query_params.get('focus_income_id')
+        if focus_income_raw:
+            try:
+                focus_income_id = int(focus_income_raw)
+            except (TypeError, ValueError):
+                focus_income_id = None
         incomes = db.query(Income).options(joinedload(Income.recurrence)).order_by(Income.date.desc()).limit(50).all()
+        if focus_income_id and all(inc.id != focus_income_id for inc in incomes):
+            focused_income = db.query(Income).options(joinedload(Income.recurrence)).filter(Income.id == focus_income_id).first()
+            if focused_income:
+                incomes.insert(0, focused_income)
         apartments = db.query(Apartment).all()
         platforms = db.query(Platform).all()
+        pms = db.query(PropertyManager).all()
         attachments = db.query(Attachment).all()
         attachments_by_income = {}
         if incomes:
@@ -592,23 +608,16 @@ async def incomes_index(request: Request):
                 inc.associated_pm_name = None
                 inc.pm_percent = float(getattr(inc, 'pm_percent', 0.0) or 0.0)
                 inc.pm_amount = float(getattr(inc, 'pm_amount', 0.0) or 0.0)
-        # build a mapping for apartment to its PM percent for client-side default behavior (used in JS)
+            inc.cleaning_emoji = "🧹" if inc.apartment_id else ""
+        # build a mapping for apartment to PM metadata used by the client-side defaults
         apt_pm_map = {}
         for apt in apartments:
             if apt.property_manager_id:
                 pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
-                apt_pm_map[apt.id] = float(pm.percent or 0.0) if pm else 0.0
+                apt_pm_map[apt.id] = {"percent": float(pm.percent or 0.0) if pm else 0.0, "pm_id": pm.id if pm else None}
             else:
-                apt_pm_map[apt.id] = 0.0
-            # build a mapping for apartment to its PM percent and PM id for client-side default behavior (used in JS)
-            apt_pm_map = {}
-            for apt in apartments:
-                if apt.property_manager_id:
-                    pm = db.query(PropertyManager).filter(PropertyManager.id == apt.property_manager_id).first()
-                    apt_pm_map[apt.id] = {"percent": float(pm.percent or 0.0) if pm else 0.0, "pm_id": pm.id if pm else None}
-                else:
-                    apt_pm_map[apt.id] = {"percent": 0.0, "pm_id": None}
-        return templates.TemplateResponse("incomes_index.html", {"request": request, "incomes": incomes, "apartments": apartments, "platforms": platforms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "next": next_url, "default_date": default_date})
+                apt_pm_map[apt.id] = {"percent": 0.0, "pm_id": None}
+        return templates.TemplateResponse(request, "incomes_index.html", {"incomes": incomes, "apartments": apartments, "platforms": platforms, "pms": pms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date, "focus_income_id": focus_income_id})
     finally:
         db.close()
 
@@ -734,7 +743,12 @@ async def edit_income_get(request: Request, income_id: int):
         attached = db.query(Attachment).filter(Attachment.income_id == e.id).all()
         next_url = request.query_params.get('next') or None
         _ = e.recurrence
-        return templates.TemplateResponse('income_edit.html', {"request": request, "income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached, "next": next_url})
+        # collect all siblings in the same series
+        series_items = []
+        series_recurrence_id = e.recurrence_id or (inferred.id if inferred else None)
+        if series_recurrence_id:
+            series_items = db.query(Income).filter(Income.recurrence_id == series_recurrence_id).order_by(Income.date).all()
+        return templates.TemplateResponse(request, 'income_edit.html', {"income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached, "next": next_url, "series_items": series_items})
     finally:
         db.close()
 

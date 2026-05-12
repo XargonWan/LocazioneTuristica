@@ -6,6 +6,21 @@
     <div class="card">
       <div class="card-body">
         <h5 class="card-title">Modifica Spesa</h5>
+        {% if series_items %}
+        <div class="mb-3">
+          <span class="badge bg-info text-dark">Serie ricorrente</span>
+          <div class="mt-2 border rounded p-2" style="max-height:200px;overflow-y:auto;">
+            {% for s in series_items %}
+            <div class="d-flex justify-content-between align-items-center py-1 {% if s.id == expense.id %}fw-bold{% endif %}" style="border-bottom:1px solid #eee;">
+              <a href="/money/expenses/{{ s.id }}/edit" class="text-decoration-none {% if s.id == expense.id %}text-primary{% else %}text-secondary{% endif %}">
+                {{ s.date }} — €{{ '%.2f'|format(s.gross_amount) }}
+                {% if s.id == expense.id %}<span class="badge bg-primary ms-1">attuale</span>{% endif %}
+              </a>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
         <form method="post" action="/money/expenses/{{ expense.id }}/edit">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <div class="mb-3">

@@ -5,13 +5,22 @@
 <div class="card">
   <div class="card-body">
     <form method="post" action="/cleaning/{{ cleaning.id }}/edit">
+      <input type="hidden" name="income_id" value="{{ cleaning.income_id if cleaning.income_id else '' }}">
+      {% if linked_income %}
+      <div class="alert alert-info">
+        Pulizia collegata all'entrata #{{ linked_income.id }} del {{ linked_income.date|format_date }}.
+      </div>
+      {% endif %}
       <div class="mb-3">
         <label>Data</label>
         <input type="date" name="date" class="form-control" required value="{{ cleaning.date }}">
       </div>
       <div class="mb-3">
         <label>Appartamento</label>
-        <select name="apartment_id" class="form-control" required>
+        {% if linked_income and cleaning.apartment_id %}
+        <input type="hidden" name="apartment_id" value="{{ cleaning.apartment_id }}">
+        {% endif %}
+        <select name="apartment_id" class="form-control" required {% if linked_income and cleaning.apartment_id %}disabled{% endif %}>
           <option value="">---</option>
           {% for apt in apartments %}
           <option value="{{ apt.id }}" {% if cleaning.apartment_id == apt.id %}selected{% endif %}>{{ apt.name }}</option>

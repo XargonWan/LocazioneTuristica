@@ -52,7 +52,7 @@ async def index(request: Request):
                     pm_pct = float(pm.percent or 0.0)
                     pm_amount = float(inc.gross_amount or 0.0) * (pm_pct / 100.0)
             pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
-        return templates.TemplateResponse("anagrafiche_index.html", {"request": request, "pms": pms, "apts": apts, "companies": companies, "platforms": platforms, "pm_totals": pm_totals})
+        return templates.TemplateResponse(request, "anagrafiche_index.html", {"pms": pms, "apts": apts, "companies": companies, "platforms": platforms, "pm_totals": pm_totals})
     finally:
         db.close()
 
@@ -151,7 +151,7 @@ async def edit_pm_get(request: Request, pm_id: int):
                 continue
             if exp.associated_pm_id == pm.id:
                 pm_total -= float(exp.gross_amount or 0.0)
-        return templates.TemplateResponse('pm_edit.html', {"request": request, "pm": pm, "apartments": apartments, "pms": pms, "pm_total": pm_total})
+        return templates.TemplateResponse(request, 'pm_edit.html', {"pm": pm, "apartments": apartments, "pms": pms, "pm_total": pm_total})
     finally:
         db.close()
 
@@ -183,8 +183,7 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
             exps = db.query(Expense).filter(Expense.associated_pm_id == pm.id, Expense.pm_percent == old_percent).all()
             if incs or exps:
                 # render confirmation screen
-                return templates.TemplateResponse('pm_update_confirm.html', {
-                    'request': request,
+                return templates.TemplateResponse(request, 'pm_update_confirm.html', {
                     'pm': pm,
                     'old_percent': old_percent,
                     'new_percent': percent,
@@ -264,7 +263,7 @@ async def edit_apartment_get(request: Request, apt_id: int):
         if not apt:
             return RedirectResponse(url='/anagrafiche')
         pms = db.query(PropertyManager).all()
-        return templates.TemplateResponse('apartment_edit.html', {"request": request, "apt": apt, "pms": pms})
+        return templates.TemplateResponse(request, 'apartment_edit.html', {"apt": apt, "pms": pms})
     finally:
         db.close()
 
@@ -337,7 +336,7 @@ async def edit_company_get(request: Request, company_id: int):
         c = db.query(Company).filter(Company.id == company_id).first()
         if not c:
             return RedirectResponse(url='/anagrafiche')
-        return templates.TemplateResponse('company_edit.html', {"request": request, "company": c})
+        return templates.TemplateResponse(request, 'company_edit.html', {"company": c})
     finally:
         db.close()
 
@@ -385,7 +384,7 @@ async def edit_platform_get(request: Request, platform_id: int):
         p = db.query(Platform).filter(Platform.id == platform_id).first()
         if not p:
             return RedirectResponse(url='/anagrafiche')
-        return templates.TemplateResponse('platform_edit.html', {"request": request, "platform": p})
+        return templates.TemplateResponse(request, 'platform_edit.html', {"platform": p})
     finally:
         db.close()
 

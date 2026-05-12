@@ -91,10 +91,7 @@
                                         <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
                                           <td class="align-middle"><input type="checkbox" class="form-check-input sel-ov d-none" value="{{ item.id }}" data-type="{{ item.type }}"></td>
                                           <td>
-                                            {% if item.cleaning_emoji %}
-                                              <a href="/cleaning/from-expense/{{ item.id }}" title="Gestisci pulizia" class="text-decoration-none">{{ item.cleaning_emoji }}</a>
-                                            {% endif %}
-                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}
+                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}{% if item.type == 'income' and item.cleaning_emoji %} <a href="/cleaning?apartment_id={{ item.apartment_id }}&income_id={{ item.id }}&date={{ item.raw_date }}&next={{ ('/overview?year=' ~ year)|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ item.cleaning_emoji }}</a>{% endif %}
                                           </td>
                                           <td>{{ item.date|format_date }}</td>
                                           <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
