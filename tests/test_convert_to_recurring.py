@@ -1,8 +1,11 @@
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.db import SessionLocal
 from app.models import Apartment, Expense, Income, PropertyManager, Recurrence, User
 from app.routers.auth import pwd_context
+
+pytestmark = pytest.mark.db_backup
 
 
 def create_admin(db):

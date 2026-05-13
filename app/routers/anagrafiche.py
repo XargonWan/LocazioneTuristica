@@ -7,12 +7,29 @@ from app.db import SessionLocal
 from app.auth_utils import get_current_user
 from app.auth_utils import admin_required, auth_required
 from app.models import PropertyManager, Apartment, Company, Platform
+from app.models import CleaningService
 from app.models import Income, Expense
 from datetime import datetime
 from app.debug import log_request_form
 
 router = APIRouter(prefix="/anagrafiche")
 from app.main import templates
+
+
+def _request_path_with_query(request: Request):
+    query = request.url.query
+    return f"{request.url.path}?{query}" if query else request.url.path
+
+
+def _anagrafiche_default_next(request: Request):
+    year = request.query_params.get('year')
+    if year:
+        return f"/anagrafiche?year={year}"
+    return "/anagrafiche"
+
+
+def _redirect_to_next(next_url, fallback):
+    return RedirectResponse(url=(next_url or fallback), status_code=HTTP_303_SEE_OTHER)
 
 
 @router.get("")
@@ -52,59 +69,60 @@ async def index(request: Request):
                     pm_pct = float(pm.percent or 0.0)
                     pm_amount = float(inc.gross_amount or 0.0) * (pm_pct / 100.0)
             pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
-        return templates.TemplateResponse(request, "anagrafiche_index.html", {"pms": pms, "apts": apts, "companies": companies, "platforms": platforms, "pm_totals": pm_totals})
+        next_url = _request_path_with_query(request)
+        return templates.TemplateResponse(request, "anagrafiche_index.html", {"pms": pms, "apts": apts, "companies": companies, "platforms": platforms, "pm_totals": pm_totals, "next": next_url})
     finally:
         db.close()
 
 
 @router.post("/property-manager/add")
-async def add_pm(request: Request, first_name: str = Form(...), last_name: str = Form(...), percent: float = Form(0.0), user=Depends(admin_required)):
+async def add_pm(request: Request, first_name: str = Form(...), last_name: str = Form(...), percent: float = Form(0.0), next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     await log_request_form(request)
     try:
         pm = PropertyManager(first_name=first_name, last_name=last_name, percent=percent)
         db.add(pm)
         db.commit()
-        return RedirectResponse(url="/anagrafiche", status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post("/apartment/add")
-async def add_apartment(request: Request, name: str = Form(...), property_manager_id: int = Form(None), user=Depends(auth_required)):
+async def add_apartment(request: Request, name: str = Form(...), property_manager_id: int = Form(None), next: str = Form(None), user=Depends(auth_required)):
     db = SessionLocal()
     await log_request_form(request)
     try:
         apt = Apartment(name=name, property_manager_id=property_manager_id)
         db.add(apt)
         db.commit()
-        return RedirectResponse(url="/anagrafiche", status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post('/company/add')
-async def add_company(request: Request, company_name: str = Form(...), is_cleaning_company: str = Form('0'), user=Depends(admin_required)):
+async def add_company(request: Request, company_name: str = Form(...), is_cleaning_company: str = Form('0'), next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     await log_request_form(request)
     try:
         c = Company(company_name=company_name, is_cleaning_company=(is_cleaning_company == '1'))
         db.add(c)
         db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post('/platform/add')
-async def add_platform(request: Request, name: str = Form(...), link: str = Form(''), user=Depends(admin_required)):
+async def add_platform(request: Request, name: str = Form(...), link: str = Form(''), next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     await log_request_form(request)
     try:
         p = Platform(name=name, link=link)
         db.add(p)
         db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
@@ -117,9 +135,10 @@ async def edit_pm_get(request: Request, pm_id: int):
     try:
         pm = db.query(PropertyManager).filter(PropertyManager.id == pm_id).first()
         if not pm:
-            return RedirectResponse(url='/anagrafiche')
+            return RedirectResponse(url=_anagrafiche_default_next(request))
         apartments = db.query(Apartment).all()
         pms = db.query(PropertyManager).all()
+        next_url = request.query_params.get('next') or _anagrafiche_default_next(request)
         # compute PM totals for the year
         pm_total = 0.0
         from app.models import Income
@@ -151,7 +170,7 @@ async def edit_pm_get(request: Request, pm_id: int):
                 continue
             if exp.associated_pm_id == pm.id:
                 pm_total -= float(exp.gross_amount or 0.0)
-        return templates.TemplateResponse(request, 'pm_edit.html', {"pm": pm, "apartments": apartments, "pms": pms, "pm_total": pm_total})
+        return templates.TemplateResponse(request, 'pm_edit.html', {"pm": pm, "apartments": apartments, "pms": pms, "pm_total": pm_total, "next": next_url})
     finally:
         db.close()
 
@@ -169,12 +188,13 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
     form = await request.form()
     old_percent = float(form.get('old_percent') or 0.0)
     confirm_update = form.get('confirm_update') == '1'
+    next_url = form.get('next') or '/anagrafiche'
 
     db = SessionLocal()
     try:
         pm = db.query(PropertyManager).filter(PropertyManager.id == pm_id).first()
         if not pm:
-            return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+            return _redirect_to_next(next_url, '/anagrafiche')
 
         # if percent changed and we haven't yet confirmed, look for affected entries
         if percent != old_percent and not confirm_update:
@@ -189,7 +209,8 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
                     'new_percent': percent,
                     'inc_count': len(incs),
                     'exp_count': len(exps),
-                    'apartment_ids': apartment_ids or []
+                    'apartment_ids': apartment_ids or [],
+                    'next': next_url
                 })
 
         # apply changes to PM
@@ -235,20 +256,20 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
 
         db.add(pm)
         db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next_url, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post('/property-manager/{pm_id}/delete')
-async def delete_pm(request: Request, pm_id: int, user=Depends(admin_required)):
+async def delete_pm(request: Request, pm_id: int, next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         pm = db.query(PropertyManager).filter(PropertyManager.id == pm_id).first()
         if pm:
             db.delete(pm)
             db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
@@ -261,15 +282,17 @@ async def edit_apartment_get(request: Request, apt_id: int):
     try:
         apt = db.query(Apartment).filter(Apartment.id == apt_id).first()
         if not apt:
-            return RedirectResponse(url='/anagrafiche')
+            return RedirectResponse(url=_anagrafiche_default_next(request))
         pms = db.query(PropertyManager).all()
-        return templates.TemplateResponse(request, 'apartment_edit.html', {"apt": apt, "pms": pms})
+        cleaning_companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
+        next_url = request.query_params.get('next') or _anagrafiche_default_next(request)
+        return templates.TemplateResponse(request, 'apartment_edit.html', {"apt": apt, "pms": pms, "cleaning_companies": cleaning_companies, "next": next_url})
     finally:
         db.close()
 
 
 @router.api_route('/apartment/{apt_id}/edit', methods=["POST", "PUT", "PATCH"])
-async def edit_apartment_post(request: Request, apt_id: int, name: str = Form(...), property_manager_id: int = Form(None), user=Depends(admin_required)):
+async def edit_apartment_post(request: Request, apt_id: int, name: str = Form(...), property_manager_id: int = Form(None), default_cleaning_company_id: int = Form(None), next: str = Form(None), user=Depends(admin_required)):
     await log_request_form(request)
     try:
         print('DEBUG: edit_apartment_post called with method', request.method, 'apt_id', apt_id)
@@ -279,31 +302,32 @@ async def edit_apartment_post(request: Request, apt_id: int, name: str = Form(..
     try:
         apt = db.query(Apartment).filter(Apartment.id == apt_id).first()
         if not apt:
-            return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+            return _redirect_to_next(next, '/anagrafiche')
         apt.name = name
         apt.property_manager_id = property_manager_id
+        apt.default_cleaning_company_id = default_cleaning_company_id
         db.add(apt)
         db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post('/apartment/{apt_id}/delete')
-async def delete_apartment(request: Request, apt_id: int, user=Depends(admin_required)):
+async def delete_apartment(request: Request, apt_id: int, next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         apt = db.query(Apartment).filter(Apartment.id == apt_id).first()
         if apt:
             db.delete(apt)
             db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post('/apartment/assign')
-async def assign_apartment(request: Request, apartment_id: int = Form(...), property_manager_id: int = Form(None), user=Depends(auth_required)):
+async def assign_apartment(request: Request, apartment_id: int = Form(...), property_manager_id: int = Form(None), next: str = Form(None), user=Depends(auth_required)):
     """Assign or unassign an existing apartment to a property manager.
     If property_manager_id is empty or None, the apartment will be unassigned (property_manager_id set to NULL).
     """
@@ -311,7 +335,7 @@ async def assign_apartment(request: Request, apartment_id: int = Form(...), prop
     try:
         apt = db.query(Apartment).filter(Apartment.id == apartment_id).first()
         if not apt:
-            return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+            return _redirect_to_next(next, '/anagrafiche')
         # allow unassign
         if not property_manager_id or str(property_manager_id).strip() == '':
             apt.property_manager_id = None
@@ -319,6 +343,8 @@ async def assign_apartment(request: Request, apartment_id: int = Form(...), prop
             apt.property_manager_id = int(property_manager_id)
         db.add(apt)
         db.commit()
+        if next:
+            return _redirect_to_next(next, '/anagrafiche')
         # Redirect back to the PM edit page if we assigned to a PM, else to anagrafiche
         if apt.property_manager_id:
             return RedirectResponse(url=f"/anagrafiche/property-manager/{apt.property_manager_id}/edit", status_code=HTTP_303_SEE_OTHER)
@@ -335,14 +361,15 @@ async def edit_company_get(request: Request, company_id: int):
     try:
         c = db.query(Company).filter(Company.id == company_id).first()
         if not c:
-            return RedirectResponse(url='/anagrafiche')
-        return templates.TemplateResponse(request, 'company_edit.html', {"company": c})
+            return RedirectResponse(url=_anagrafiche_default_next(request))
+        next_url = request.query_params.get('next') or _anagrafiche_default_next(request)
+        return templates.TemplateResponse(request, 'company_edit.html', {"company": c, "next": next_url})
     finally:
         db.close()
 
 
 @router.api_route('/company/{company_id}/edit', methods=["POST", "PUT", "PATCH"])
-async def edit_company_post(request: Request, company_id: int, company_name: str = Form(...), is_cleaning_company: str = Form('0'), user=Depends(admin_required)):
+async def edit_company_post(request: Request, company_id: int, company_name: str = Form(...), is_cleaning_company: str = Form('0'), default_gross_amount: float = Form(None), default_net_amount: float = Form(None), next: str = Form(None), user=Depends(admin_required)):
     await log_request_form(request)
     try:
         print('DEBUG: edit_company_post called with method', request.method, 'company_id', company_id)
@@ -352,25 +379,27 @@ async def edit_company_post(request: Request, company_id: int, company_name: str
     try:
         c = db.query(Company).filter(Company.id == company_id).first()
         if not c:
-            return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+            return _redirect_to_next(next, '/anagrafiche')
         c.company_name = company_name
         c.is_cleaning_company = (is_cleaning_company == '1')
+        c.default_gross_amount = default_gross_amount
+        c.default_net_amount = default_net_amount
         db.add(c)
         db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post('/company/{company_id}/delete')
-async def delete_company(request: Request, company_id: int, user=Depends(admin_required)):
+async def delete_company(request: Request, company_id: int, next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         c = db.query(Company).filter(Company.id == company_id).first()
         if c:
             db.delete(c)
             db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
@@ -383,14 +412,15 @@ async def edit_platform_get(request: Request, platform_id: int):
     try:
         p = db.query(Platform).filter(Platform.id == platform_id).first()
         if not p:
-            return RedirectResponse(url='/anagrafiche')
-        return templates.TemplateResponse(request, 'platform_edit.html', {"platform": p})
+            return RedirectResponse(url=_anagrafiche_default_next(request))
+        next_url = request.query_params.get('next') or _anagrafiche_default_next(request)
+        return templates.TemplateResponse(request, 'platform_edit.html', {"platform": p, "next": next_url})
     finally:
         db.close()
 
 
 @router.api_route('/platform/{platform_id}/edit', methods=["POST", "PUT", "PATCH"])
-async def edit_platform_post(request: Request, platform_id: int, name: str = Form(...), link: str = Form(''), user=Depends(admin_required)):
+async def edit_platform_post(request: Request, platform_id: int, name: str = Form(...), link: str = Form(''), next: str = Form(None), user=Depends(admin_required)):
     await log_request_form(request)
     try:
         print('DEBUG: edit_platform_post called with method', request.method, 'platform_id', platform_id)
@@ -400,24 +430,24 @@ async def edit_platform_post(request: Request, platform_id: int, name: str = For
     try:
         p = db.query(Platform).filter(Platform.id == platform_id).first()
         if not p:
-            return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+            return _redirect_to_next(next, '/anagrafiche')
         p.name = name
         p.link = link
         db.add(p)
         db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()
 
 
 @router.post('/platform/{platform_id}/delete')
-async def delete_platform(request: Request, platform_id: int, user=Depends(admin_required)):
+async def delete_platform(request: Request, platform_id: int, next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         p = db.query(Platform).filter(Platform.id == platform_id).first()
         if p:
             db.delete(p)
             db.commit()
-        return RedirectResponse(url='/anagrafiche', status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/anagrafiche')
     finally:
         db.close()

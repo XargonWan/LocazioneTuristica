@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next else '/cleaning' %}
 <h1>Pulizie</h1>
 <div class="card">
   <div class="card-body">
     <form method="post" action="/cleaning/add">
       <input type="hidden" name="income_id" value="{{ default_income_id if default_income_id else '' }}">
-      <input type="hidden" name="next" value="{{ next if next else '' }}">
+      <input type="hidden" name="next" value="{{ return_url }}">
       {% if linked_income %}
       <div class="alert alert-info">
         Nuova pulizia collegata all'entrata #{{ linked_income.id }} del {{ linked_income.date|format_date }}.
@@ -21,10 +22,14 @@
         {% if linked_income and default_apartment_id %}
         <input type="hidden" name="apartment_id" value="{{ default_apartment_id }}">
         {% endif %}
-        <select name="apartment_id" class="form-control" required {% if linked_income and default_apartment_id %}disabled{% endif %}>
+        <select name="apartment_id" class="form-control" id="cleaning_apartment_select" required {% if linked_income and default_apartment_id %}disabled{% endif %}>
           <option value="">---</option>
           {% for apt in apartments %}
-          <option value="{{ apt.id }}" {% if default_apartment_id and (default_apartment_id|string) == (apt.id|string) %}selected{% endif %}>{{ apt.name }}</option>
+          <option value="{{ apt.id }}"
+            data-default-company="{{ apt.default_cleaning_company_id or '' }}"
+            data-default-gross="{{ '%.2f'|format(apt.default_cleaning_company.default_gross_amount) if apt.default_cleaning_company and apt.default_cleaning_company.default_gross_amount is not none else '' }}"
+            data-default-net="{{ '%.2f'|format(apt.default_cleaning_company.default_net_amount) if apt.default_cleaning_company and apt.default_cleaning_company.default_net_amount is not none else '' }}"
+            {% if default_apartment_id and (default_apartment_id|string) == (apt.id|string) %}selected{% endif %}>{{ apt.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -80,8 +85,9 @@
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}
-          <a class="btn btn-sm btn-outline-secondary" href="/cleaning/{{ c.id }}/edit">Modifica</a>
+          <a class="btn btn-sm btn-outline-secondary" href="/cleaning/{{ c.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
           <form method="post" action="/cleaning/{{ c.id }}/delete" class="d-inline">
+            <input type="hidden" name="next" value="{{ return_url }}">
             <button class="btn btn-sm btn-danger">Elimina</button>
           </form>
           {% endif %}
@@ -100,6 +106,32 @@
   const vatInput = document.getElementById('cleaning_vat');
   const isNetChk = document.getElementById('cleaning_is_net');
   const compSel = document.getElementById('cleaning_company_select');
+
+  const aptSel = document.getElementById('cleaning_apartment_select');
+
+  // when apartment changes, autofill default cleaning company and amounts
+  if(aptSel){
+    aptSel.addEventListener('change', ()=>{
+      const opt = aptSel.options[aptSel.selectedIndex];
+      if(!opt || !opt.value) return;
+      const defComp = opt.getAttribute('data-default-company');
+      const defGross = opt.getAttribute('data-default-gross');
+      const defNet = opt.getAttribute('data-default-net');
+      if(defComp && compSel){
+        compSel.value = defComp;
+        compSel.dispatchEvent(new Event('change'));
+      }
+      if(defGross){
+        if(grossInput) grossInput.value = defGross;
+        if(netInput) netInput.value = '';
+        if(isNetChk) isNetChk.checked = false;
+      } else if(defNet){
+        if(netInput) netInput.value = defNet;
+        if(grossInput) grossInput.value = '';
+        if(isNetChk) isNetChk.checked = true;
+      }
+    });
+  }
 
   // when company changes, hide services belonging to other companies
   if(compSel && svcSel){

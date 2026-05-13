@@ -27,6 +27,69 @@ def test_company_cleaning_checkbox_and_badge():
     assert 'badge' in rendered and 'Pulizie' in rendered
 
 
+def test_anagrafiche_templates_preserve_next():
+    pm = type('PM', (), {'id': 1, 'first_name': 'Mario', 'last_name': 'Rossi'})
+    apt = type('A', (), {'id': 2, 'name': 'APT 2', 'property_manager_id': pm.id})
+    rendered = templates.env.get_template("anagrafiche_index.html").render(
+        request=R(),
+        pms=[pm],
+        apts=[apt],
+        companies=[],
+        platforms=[],
+        pm_totals={},
+        next='/overview?year=2025'
+    )
+    assert 'name="next" value="/overview?year=2025"' in rendered
+    assert 'href="/anagrafiche/property-manager/1/edit?next=' in rendered
+    assert 'overview' in rendered and '%3Fyear%3D2025' in rendered
+
+    rendered2 = templates.env.get_template('pm_update_confirm.html').render(
+        request=R(),
+        pm=pm,
+        old_percent=10.0,
+        new_percent=12.0,
+        inc_count=1,
+        exp_count=1,
+        apartment_ids=[apt.id],
+        next='/overview?year=2025'
+    )
+    assert 'name="next" value="/overview?year=2025"' in rendered2
+    assert 'href="/overview?year=2025"' in rendered2
+
+    rendered3 = templates.env.get_template('apartment_edit.html').render(
+        request=R(),
+        apt=type('APT', (), {'id': 3, 'name': 'APT 3', 'property_manager_id': None, 'default_cleaning_company_id': None}),
+        pms=[pm],
+        cleaning_companies=[],
+        next='/overview?year=2025'
+    )
+    assert 'name="next" value="/overview?year=2025"' in rendered3
+    assert 'href="/overview?year=2025"' in rendered3
+
+
+def test_settings_users_attachments_templates_preserve_next():
+    settings_rendered = templates.env.get_template('settings.html').render(
+        request=R(),
+        settings=[],
+        next='/overview?year=2025'
+    )
+    assert settings_rendered.count('name="next" value="/overview?year=2025"') >= 2
+
+    users_rendered = templates.env.get_template('users_index.html').render(
+        request=R(),
+        users=[],
+        next='/overview?year=2025'
+    )
+    assert 'name="next" value="/overview?year=2025"' in users_rendered
+
+    attachments_rendered = templates.env.get_template('attachments_index.html').render(
+        request=R(),
+        attachments=[],
+        next='/overview?year=2025'
+    )
+    assert 'name="next" value="/overview?year=2025"' in attachments_rendered
+
+
 def test_cleaning_templates_render():
     # basic smoke test for cleaning pages
     linked_income = type('I', (), {'id': 1, 'date': '2025-01-01'})
@@ -34,13 +97,21 @@ def test_cleaning_templates_render():
     rendered = templates.env.get_template('cleanings_index.html').render(request=R(), cleanings=[fake_cleaning], apartments=[], companies=[], services=[], default_income_id=1, default_apartment_id=2, default_date='2025-01-01', next='/money/incomes', linked_income=linked_income)
     assert 'Pulizie' in rendered or 'Appartamento' in rendered
     assert 'name="income_id"' in rendered
+    assert 'name="next" value="/money/incomes"' in rendered
+    assert 'href="/cleaning/1/edit?next=' in rendered
     assert '/money/incomes?focus_income_id=1#income-row-1' in rendered
-    rendered2 = templates.env.get_template('cleaning_edit.html').render(request=R(), cleaning=type('C', (), {'id':1,'date':'2025-01-01','apartment_id':None,'income_id':1,'company_id':None,'service_id':None,'gross_amount':0,'net_amount':0,'vat_percent':22,'is_net':False,'notes':''}), apartments=[], companies=[], services=[], linked_income=linked_income)
+    rendered2 = templates.env.get_template('cleaning_edit.html').render(request=R(), cleaning=type('C', (), {'id':1,'date':'2025-01-01','apartment_id':None,'income_id':1,'company_id':None,'service_id':None,'gross_amount':0,'net_amount':0,'vat_percent':22,'is_net':False,'notes':''}), apartments=[], companies=[], services=[], linked_income=linked_income, next='/overview?year=2025')
     assert 'Servizio' in rendered2
-    rendered3 = templates.env.get_template('cleaning_services.html').render(request=R(), services=[], companies=[])
+    assert 'name="next" value="/overview?year=2025"' in rendered2
+    assert 'href="/overview?year=2025"' in rendered2
+    rendered3 = templates.env.get_template('cleaning_services.html').render(request=R(), services=[type('SVC', (), {'id': 3, 'name': 'Rapido', 'default_amount': 25.0, 'company': type('CO', (), {'company_name': 'CleanCo'})})], companies=[], next='/overview?year=2025')
     assert 'Nome servizio' in rendered3
-    rendered4 = templates.env.get_template('cleaning_service_edit.html').render(request=R(), service=type('S', (), {'id':1,'company_id':None,'name':'','default_amount':0,'is_net':False,'vat_percent':22}), companies=[])
+    assert 'name="next" value="/overview?year=2025"' in rendered3
+    assert 'href="/cleaning/service/3/edit?next=' in rendered3
+    rendered4 = templates.env.get_template('cleaning_service_edit.html').render(request=R(), service=type('S', (), {'id':1,'company_id':None,'name':'','default_amount':0,'is_net':False,'vat_percent':22}), companies=[], next='/overview?year=2025')
     assert 'Importo standard' in rendered4
+    assert 'name="next" value="/overview?year=2025"' in rendered4
+    assert 'href="/overview?year=2025"' in rendered4
 
 def test_incomes_template_shows_pm_and_delete_modal():
     fake_inc = type("X", (), {
@@ -168,6 +239,8 @@ def test_expenses_template_title_and_delete_modal():
 def test_overview_has_table_borders():
     rendered = templates.env.get_template("overview.html").render(request=R(), months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}, {"month": 2, "income": 0.0, "expense": 0.0, "pm_due": 0.0}], entries_by_month={1: [], 2: []}, year=2025, prev_year=None, next_year=None, available_years=[2025], current_year=2025, total_income=0.0, total_expense=0.0, pm_paid_total=0.0, pm_paid_pct=0.0)
     assert "table table-sm" in rendered
+    assert 'overview-main-column' in rendered
+    assert 'col-md-8' not in rendered
 
 
 def test_overview_monthly_totals_reflect_net_and_pm_and_expenses():
@@ -262,6 +335,29 @@ def test_overview_bulk_delete_capture_is_async():
     # previous bug was using a non-async listener which caused a syntax error
     rendered = templates.env.get_template("overview.html").render(request=R(), months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}], entries_by_month={1: []}, year=2025, prev_year=None, next_year=None, available_years=[2025], current_year=2025, total_income=0.0, total_expense=0.0, pm_paid_total=0.0, pm_paid_pct=0.0)
     assert "async function captureBulkDeleteOv" in rendered
+
+
+def test_overview_uses_year_specific_return_url_everywhere():
+    rendered = templates.env.get_template("overview.html").render(
+        request=R(),
+        months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}],
+        entries_by_month={1: [
+            {'type': 'income', 'date': '2025-01-01', 'gross_amount': 100.0, 'net_amount': 78.0, 'notes': 'Rent', 'id': 1},
+            {'type': 'expense', 'date': '2025-01-02', 'gross_amount': 10.0, 'notes': 'Fee', 'id': 2}
+        ]},
+        year=2025,
+        prev_year=None,
+        next_year=None,
+        available_years=[2025],
+        current_year=2025,
+        total_income=0.0,
+        total_expense=0.0,
+        pm_paid_total=0.0,
+        pm_paid_pct=0.0
+    )
+    assert 'name="next" value="/overview?year=2025"' in rendered
+    assert "const overviewReturnUrl = \"/overview?year=2025\";" in rendered
+    assert "window.location = overviewReturnUrl;" in rendered
 
 
 def test_overview_year_navigation_with_data():

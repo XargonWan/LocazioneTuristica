@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = '/overview?year=' ~ year %}
 <div class="d-flex justify-content-between align-items-center">
   <h1 class="mb-0">
     {# previous year arrow only if there is data for one before #}
@@ -19,8 +20,8 @@
   </h1>
     <div>
     {% if request.session.get('role') == 'admin' %}
-    <a href="/money/incomes?next=/overview?year={{year}}" class="btn btn-success me-2">+ Entrata</a>
-    <a href="/money/expenses?next=/overview?year={{year}}" class="btn btn-danger">+ Spesa</a>
+    <a href="/money/incomes?next={{ return_url }}" class="btn btn-success me-2">+ Entrata</a>
+    <a href="/money/expenses?next={{ return_url }}" class="btn btn-danger">+ Spesa</a>
     {% endif %}
   </div>
 </div>
@@ -39,7 +40,7 @@
 {% endif %}
 <p>Benvenuto nella tua dashboard. Qui mostreremo i grafici e il riepilogo per appartamento, anno e mese.</p>
 <div class="row">
-  <div class="col-md-8">
+  <div class="col-12 overview-main-column">
     <div class="card mb-3">
       <div class="card-body">
                     <div class="card-body">
@@ -67,8 +68,8 @@
                               </div>
                            </div>
                              <div class="d-flex align-items-center">
-                               <a href="/money/incomes?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-success">+ Entrata</a>
-                               <a href="/money/expenses?date={{year}}-{{"%02d"%m.month}}-01&next=/overview?year={{year}}" class="btn btn-sm btn-outline-danger ms-1">+ Spesa</a>
+                               <a href="/money/incomes?date={{year}}-{{"%02d"%m.month}}-01&next={{ return_url }}" class="btn btn-sm btn-outline-success">+ Entrata</a>
+                               <a href="/money/expenses?date={{year}}-{{"%02d"%m.month}}-01&next={{ return_url }}" class="btn btn-sm btn-outline-danger ms-1">+ Spesa</a>
                              </div>
                            </div>
                          </li>
@@ -91,7 +92,7 @@
                                         <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
                                           <td class="align-middle"><input type="checkbox" class="form-check-input sel-ov d-none" value="{{ item.id }}" data-type="{{ item.type }}"></td>
                                           <td>
-                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}{% if item.type == 'income' and item.cleaning_emoji %} <a href="/cleaning?apartment_id={{ item.apartment_id }}&income_id={{ item.id }}&date={{ item.raw_date }}&next={{ ('/overview?year=' ~ year)|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ item.cleaning_emoji }}</a>{% endif %}
+                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}{% if item.type == 'income' and item.cleaning_emoji %} <a href="/cleaning?apartment_id={{ item.apartment_id }}&income_id={{ item.id }}&date={{ item.raw_date }}&next={{ return_url|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ item.cleaning_emoji }}</a>{% endif %}
                                           </td>
                                           <td>{{ item.date|format_date }}</td>
                                           <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
@@ -169,7 +170,7 @@
                               {% endif %}
                             </div>
                       <div class="modal-footer">
-                        <a class="btn btn-primary" href="/money/expenses/{{ item.id }}/edit?next=/overview?year={{year}}">Modifica</a>
+                        <a class="btn btn-primary" href="/money/expenses/{{ item.id }}/edit?next={{ return_url }}">Modifica</a>
                         <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineOvExp-{{ item.id }}">Elimina</button>
                         <div class="collapse mt-2" id="delInlineOvExp-{{ item.id }}">
                           <div class="card card-body">
@@ -182,7 +183,7 @@
                                 <input class="form-check-input" type="radio" name="delete_scope" id="del_series_ov_exp_{{ item.id }}" value="series">
                                 <label class="form-check-label" for="del_series_ov_exp_{{ item.id }}">Tutta la serie</label>
                               </div>
-                              <input type="hidden" name="next" value="/overview">
+                              <input type="hidden" name="next" value="{{ return_url }}">
                               <div class="mt-3 text-end">
                                 <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
                                 <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#delInlineOvExp-{{ item.id }}">Annulla</button>
@@ -217,7 +218,7 @@
                         {% endif %}
                       </div>
                       <div class="modal-footer">
-                        <a class="btn btn-primary" href="/money/incomes/{{ item.id }}/edit?next=/overview?year={{year}}">Modifica</a>
+                        <a class="btn btn-primary" href="/money/incomes/{{ item.id }}/edit?next={{ return_url }}">Modifica</a>
                         <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineOvInc-{{ item.id }}">Elimina</button>
                         <div class="collapse mt-2" id="delInlineOvInc-{{ item.id }}">
                           <div class="card card-body">
@@ -230,7 +231,7 @@
                                 <input class="form-check-input" type="radio" name="delete_scope" id="del_series_ov_inc_{{ item.id }}" value="series">
                                 <label class="form-check-label" for="del_series_ov_inc_{{ item.id }}">Tutta la serie</label>
                               </div>
-                              <input type="hidden" name="next" value="/overview">
+                              <input type="hidden" name="next" value="{{ return_url }}">
                               <div class="mt-3 text-end">
                                 <button type="submit" class="btn btn-danger">Conferma eliminazione</button>
                                 <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#delInlineOvInc-{{ item.id }}">Annulla</button>
@@ -332,7 +333,7 @@
         </div>
         <input type="hidden" name="ids" id="bulkDeleteOvIds">
         <input type="hidden" name="_type" id="bulkDeleteOvType">
-        <input type="hidden" name="next" value="/overview">
+        <input type="hidden" name="next" value="{{ return_url }}">
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
@@ -345,6 +346,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
+  const overviewReturnUrl = {{ return_url | tojson }};
   const editModeToggleOv = document.getElementById('editModeToggleOv');
   const bulkEditBtn = document.getElementById('bulkEditOvBtn');
   const bulkDeleteBtn = document.getElementById('bulkDeleteOvBtn');
@@ -458,7 +460,7 @@ document.addEventListener('DOMContentLoaded', function(){
         const body = new URLSearchParams();
         body.append('ids', map[type].join(','));
         if (deleteSeries) body.append('delete_series_if_present', 'on');
-        body.append('next', '/overview');
+        body.append('next', overviewReturnUrl);
         return fetch(url, { method: 'POST', body, credentials: 'same-origin' });
       });
       await Promise.all(promises);
@@ -468,7 +470,7 @@ document.addEventListener('DOMContentLoaded', function(){
       return;
     }
     // reload overview which is the canonical place for these actions
-    window.location = '/overview';
+    window.location = overviewReturnUrl;
   });
 
   // Fallback: intercept click on the overview bulk-delete button to avoid relying on Bootstrap modal
@@ -503,7 +505,7 @@ document.addEventListener('DOMContentLoaded', function(){
           const body = new URLSearchParams();
           body.append('ids', map[type].join(','));
           if (deleteSeries) body.append('delete_series_if_present', 'on');
-          body.append('next', '/overview');
+          body.append('next', overviewReturnUrl);
           return fetch(url, { method: 'POST', body, credentials: 'same-origin' });
         });
         await Promise.all(promises);
@@ -512,7 +514,7 @@ document.addEventListener('DOMContentLoaded', function(){
         alert("Errore durante l'eliminazione di voci. Controlla la console.");
         return;
       }
-      window.location = '/overview';
+      window.location = overviewReturnUrl;
     }, true);
   }
 

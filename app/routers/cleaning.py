@@ -11,6 +11,10 @@ router = APIRouter(prefix="/cleaning")
 from app.main import templates
 
 
+def _redirect_to_next(next_url, fallback):
+    return RedirectResponse(url=(next_url or fallback), status_code=HTTP_303_SEE_OTHER)
+
+
 @router.get("")
 async def cleanings_index(request: Request):
     if not get_current_user(request):
@@ -20,7 +24,7 @@ async def cleanings_index(request: Request):
         default_income_id = request.query_params.get('income_id')
         default_apartment_id = request.query_params.get('apartment_id')
         default_date = request.query_params.get('date') or ''
-        next_url = request.query_params.get('next') or None
+        next_url = request.query_params.get('next') or '/cleaning'
         linked_income = None
         if default_income_id:
             try:
@@ -115,13 +119,14 @@ async def edit_cleaning_get(request: Request, cleaning_id: int):
     db = SessionLocal()
     try:
         c = db.query(Cleaning).filter(Cleaning.id == cleaning_id).first()
+        next_url = request.query_params.get('next') or '/cleaning'
         if not c:
-            return RedirectResponse(url='/cleaning')
+            return RedirectResponse(url=next_url)
         apartments = db.query(Apartment).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
         services = db.query(CleaningService).filter(CleaningService.company_id == c.company_id).all()
         linked_income = db.query(Income).filter(Income.id == c.income_id).first() if c.income_id else None
-        return templates.TemplateResponse(request, 'cleaning_edit.html', {"cleaning": c, "apartments": apartments, "companies": companies, "services": services, "linked_income": linked_income})
+        return templates.TemplateResponse(request, 'cleaning_edit.html', {"cleaning": c, "apartments": apartments, "companies": companies, "services": services, "linked_income": linked_income, "next": next_url})
     finally:
         db.close()
 
@@ -205,7 +210,7 @@ async def edit_cleaning_post(request: Request,
 
 
 @router.post("/{cleaning_id}/delete")
-async def delete_cleaning(request: Request, cleaning_id: int, user=Depends(admin_required)):
+async def delete_cleaning(request: Request, cleaning_id: int, next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         c = db.query(Cleaning).filter(Cleaning.id == cleaning_id).first()
@@ -217,7 +222,7 @@ async def delete_cleaning(request: Request, cleaning_id: int, user=Depends(admin
                     db.delete(e)
             db.delete(c)
             db.commit()
-        return RedirectResponse(url="/cleaning", status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/cleaning')
     finally:
         db.close()
 
@@ -231,7 +236,8 @@ async def services_index(request: Request):
     try:
         services = db.query(CleaningService).all()
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
-        return templates.TemplateResponse(request, "cleaning_services.html", {"services": services, "companies": companies})
+        next_url = request.query_params.get('next') or '/cleaning/service'
+        return templates.TemplateResponse(request, "cleaning_services.html", {"services": services, "companies": companies, "next": next_url})
     finally:
         db.close()
 
@@ -243,6 +249,7 @@ async def add_service(request: Request,
                       default_amount: float = Form(0.0),
                       is_net: str = Form('0'),
                       vat_percent: float = Form(22.0),
+                      next: str = Form(None),
                       user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
@@ -253,7 +260,7 @@ async def add_service(request: Request,
                               vat_percent=vat_percent)
         db.add(svc)
         db.commit()
-        return RedirectResponse(url="/cleaning/service", status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/cleaning/service')
     finally:
         db.close()
 
@@ -265,10 +272,11 @@ async def edit_service_get(request: Request, service_id: int):
     db = SessionLocal()
     try:
         svc = db.query(CleaningService).filter(CleaningService.id == service_id).first()
+        next_url = request.query_params.get('next') or '/cleaning/service'
         if not svc:
-            return RedirectResponse(url='/cleaning/service')
+            return RedirectResponse(url=next_url)
         companies = db.query(Company).filter(Company.is_cleaning_company == True).all()
-        return templates.TemplateResponse(request, 'cleaning_service_edit.html', {"service": svc, "companies": companies})
+        return templates.TemplateResponse(request, 'cleaning_service_edit.html', {"service": svc, "companies": companies, "next": next_url})
     finally:
         db.close()
 
@@ -281,6 +289,7 @@ async def edit_service_post(request: Request,
                             default_amount: float = Form(0.0),
                             is_net: str = Form('0'),
                             vat_percent: float = Form(22.0),
+                            next: str = Form(None),
                             user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
@@ -294,19 +303,19 @@ async def edit_service_post(request: Request,
             svc.vat_percent = vat_percent
             db.add(svc)
             db.commit()
-        return RedirectResponse(url="/cleaning/service", status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/cleaning/service')
     finally:
         db.close()
 
 
 @router.post("/service/{service_id}/delete")
-async def delete_service(request: Request, service_id: int, user=Depends(admin_required)):
+async def delete_service(request: Request, service_id: int, next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         svc = db.query(CleaningService).filter(CleaningService.id == service_id).first()
         if svc:
             db.delete(svc)
             db.commit()
-        return RedirectResponse(url="/cleaning/service", status_code=HTTP_303_SEE_OTHER)
+        return _redirect_to_next(next, '/cleaning/service')
     finally:
         db.close()

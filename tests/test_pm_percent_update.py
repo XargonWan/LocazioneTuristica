@@ -1,7 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.db import SessionLocal
 from app.models import PropertyManager, Income, Expense
+
+pytestmark = pytest.mark.db_backup
 
 client = TestClient(app)
 client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
@@ -105,14 +108,42 @@ def test_pm_percent_change_without_matching_entries_updates_immediately():
                 'first_name': pm.first_name,
                 'last_name': pm.last_name,
                 'percent': '15.0',
-                'old_percent': '10.0'
-            }
+                'old_percent': '10.0',
+                'next': '/overview?year=2025'
+            },
+            follow_redirects=False
         )
-        # should redirect without confirmation
-        assert resp.status_code in (200, 303)
+        # should redirect without confirmation and preserve the requested next URL
+        assert resp.status_code == 303
+        assert resp.headers['location'] == '/overview?year=2025'
         # check pm updated
         db.refresh(pm)
         assert float(pm.percent) == 15.0
     finally:
         db.query(PropertyManager).filter(PropertyManager.id == pm.id).delete()
         db.commit(); db.close()
+
+
+def test_add_property_manager_redirects_to_next():
+    db = SessionLocal()
+    pm = None
+    try:
+        resp = client.post(
+            '/anagrafiche/property-manager/add',
+            data={
+                'first_name': 'Next',
+                'last_name': 'PM',
+                'percent': '5.0',
+                'next': '/overview?year=2025'
+            },
+            follow_redirects=False
+        )
+        assert resp.status_code == 303
+        assert resp.headers['location'] == '/overview?year=2025'
+        pm = db.query(PropertyManager).filter(PropertyManager.first_name == 'Next', PropertyManager.last_name == 'PM').order_by(PropertyManager.id.desc()).first()
+        assert pm is not None
+    finally:
+        if pm is not None:
+            db.query(PropertyManager).filter(PropertyManager.id == pm.id).delete()
+            db.commit()
+        db.close()

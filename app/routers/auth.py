@@ -111,17 +111,18 @@ async def users_index(request: Request):
     db = SessionLocal()
     try:
         users = db.query(User).all()
-        return templates.TemplateResponse(request, 'users_index.html', {'users': users})
+        next_url = request.query_params.get('next') or '/auth/users'
+        return templates.TemplateResponse(request, 'users_index.html', {'users': users, 'next': next_url})
     finally:
         db.close()
 
 @router.post('/users/add')
-async def add_user(request: Request, username: str = Form(...), role: str = Form('readonly'), user=Depends(admin_required)):
+async def add_user(request: Request, username: str = Form(...), role: str = Form('readonly'), next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         new = User(username=username, role=role, must_change_password=True)
         db.add(new)
         db.commit()
-        return RedirectResponse(url='/auth/users', status_code=HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=(next or '/auth/users'), status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()

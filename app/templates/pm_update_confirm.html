@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next is defined and next else '/anagrafiche' %}
 <div class="row justify-content-center">
   <div class="col-md-6">
     <div class="card">
@@ -20,13 +21,14 @@
           <input type="hidden" name="percent" value="{{ new_percent }}">
           <input type="hidden" name="old_percent" value="{{ old_percent }}">
           <input type="hidden" name="confirm_update" value="1">
+          <input type="hidden" name="next" value="{{ return_url }}">
           {% if apartment_ids %}
             {% for aid in apartment_ids %}
               <input type="hidden" name="apartment_ids" value="{{ aid }}">
             {% endfor %}
           {% endif %}
           <button class="btn btn-primary" type="submit">Sì, aggiorna voci</button>
-          <a href="/anagrafiche/property-manager/{{ pm.id }}/edit" class="btn btn-secondary">Annulla</a>
+          <a href="{{ return_url }}" class="btn btn-secondary">Annulla</a>
         </form>
       </div>
     </div>

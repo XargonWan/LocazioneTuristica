@@ -361,6 +361,13 @@ html[data-theme="dark"] .entry-expense, body.dark .entry-expense { color: #ff6b6
 .table-sm td, .table-sm th { padding: 0.35rem 0.5rem; }
 .table-borderless tbody + tbody { border-top: 0; }
 
+@media (min-width: 992px) {
+  .overview-main-column {
+    flex: 0 0 80%;
+    max-width: 80%;
+  }
+}
+
 /* Responsive: for very narrow screens, stack columns */
 @media (max-width: 576px) {
   .table-responsive table thead { display: none; }

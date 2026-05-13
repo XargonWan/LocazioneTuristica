@@ -1,10 +1,12 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next is defined and next else '/cleaning/service' %}
 <h1>Servizi di pulizia</h1>
 <div class="card">
   <div class="card-body">
     <form method="post" action="/cleaning/service/add">
+      <input type="hidden" name="next" value="{{ return_url }}">
       <div class="mb-3">
         <label>Ditta</label>
         <select name="company_id" class="form-control" required>
@@ -43,8 +45,9 @@
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}
-          <a class="btn btn-sm btn-outline-secondary" href="/cleaning/service/{{ svc.id }}/edit">Modifica</a>
+          <a class="btn btn-sm btn-outline-secondary" href="/cleaning/service/{{ svc.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
           <form method="post" action="/cleaning/service/{{ svc.id }}/delete" class="d-inline">
+            <input type="hidden" name="next" value="{{ return_url }}">
             <button class="btn btn-sm btn-danger">Elimina</button>
           </form>
           {% endif %}

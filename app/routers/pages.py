@@ -173,11 +173,12 @@ async def settings_view(request: Request):
         settings = db.query(Settings).all()
     except Exception:
         settings = []
-    return templates.TemplateResponse(request, 'settings.html', {"settings": settings})
+    next_url = request.query_params.get('next') or '/settings'
+    return templates.TemplateResponse(request, 'settings.html', {"settings": settings, "next": next_url})
 
 
 @router.post('/settings/update')
-async def settings_update(request: Request, key: str = Form(...), value: str = Form(...), user=Depends(admin_required)):
+async def settings_update(request: Request, key: str = Form(...), value: str = Form(...), next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     try:
         s = db.query(Settings).filter(Settings.key == key).first()
@@ -188,7 +189,7 @@ async def settings_update(request: Request, key: str = Form(...), value: str = F
             s.value = value
             db.add(s)
         db.commit()
-        return RedirectResponse(url='/settings', status_code=HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=(next or '/settings'), status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
 

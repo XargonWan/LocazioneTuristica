@@ -1,11 +1,13 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next is defined and next else '/cleaning' %}
 <h1>Modifica pulizia</h1>
 <div class="card">
   <div class="card-body">
     <form method="post" action="/cleaning/{{ cleaning.id }}/edit">
       <input type="hidden" name="income_id" value="{{ cleaning.income_id if cleaning.income_id else '' }}">
+      <input type="hidden" name="next" value="{{ return_url }}">
       {% if linked_income %}
       <div class="alert alert-info">
         Pulizia collegata all'entrata #{{ linked_income.id }} del {{ linked_income.date|format_date }}.
@@ -67,7 +69,7 @@
       </div>
       <div class="mb-3">
         <button class="btn btn-primary">Salva</button>
-        <a class="btn btn-secondary" href="/cleaning">Annulla</a>
+        <a class="btn btn-secondary" href="{{ return_url }}">Annulla</a>
       </div>
     </form>
   </div>

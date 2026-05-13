@@ -1,10 +1,12 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next is defined and next else '/cleaning/service' %}
 <h1>Modifica servizio di pulizia</h1>
 <div class="card">
   <div class="card-body">
     <form method="post" action="/cleaning/service/{{ service.id }}/edit">
+      <input type="hidden" name="next" value="{{ return_url }}">
       <div class="mb-3">
         <label>Ditta</label>
         <select name="company_id" class="form-control" required>
@@ -32,7 +34,7 @@
       </div>
       <div class="mb-3">
         <button class="btn btn-primary">Salva</button>
-        <a class="btn btn-secondary" href="/cleaning/service">Annulla</a>
+        <a class="btn btn-secondary" href="{{ return_url }}">Annulla</a>
       </div>
     </form>
   </div>

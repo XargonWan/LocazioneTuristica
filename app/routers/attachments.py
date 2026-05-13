@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Request, Depends
+from fastapi import APIRouter, UploadFile, File, Form, Request, Depends
 from fastapi.responses import FileResponse
 from fastapi.responses import RedirectResponse
 from starlette.status import HTTP_303_SEE_OTHER
@@ -24,13 +24,14 @@ async def index(request: Request):
     db = SessionLocal()
     try:
         attachments = db.query(Attachment).order_by(Attachment.created_at.desc()).limit(50).all()
-        return templates.TemplateResponse(request, "attachments_index.html", {"attachments": attachments})
+        next_url = request.query_params.get('next') or '/attachments'
+        return templates.TemplateResponse(request, "attachments_index.html", {"attachments": attachments, "next": next_url})
     finally:
         db.close()
 
 
 @router.post("/upload")
-async def upload(request: Request, file: UploadFile = File(...), user=Depends(admin_required)):
+async def upload(request: Request, file: UploadFile = File(...), next: str = Form(None), user=Depends(admin_required)):
     # Basic validation
     filename = file.filename
     content = await file.read()
@@ -48,7 +49,7 @@ async def upload(request: Request, file: UploadFile = File(...), user=Depends(ad
         attachment = Attachment(filename=filename, disk_path=path, mimetype=file.content_type, size=len(content))
         db.add(attachment)
         db.commit()
-        return RedirectResponse(url="/attachments", status_code=HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=(next or "/attachments"), status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
 

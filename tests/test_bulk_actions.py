@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 from fastapi.testclient import TestClient
 import subprocess, os
@@ -10,6 +11,8 @@ engine.dispose()
 from app.main import app
 from app.db import SessionLocal
 from app.models import Income, Expense, Recurrence, Company, Cleaning, CleaningService, Apartment, User
+
+pytestmark = pytest.mark.db_backup
 
 client = TestClient(app)
 client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'}, follow_redirects=False)

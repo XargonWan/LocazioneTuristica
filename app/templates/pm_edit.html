@@ -1,12 +1,14 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next is defined and next else '/anagrafiche' %}
 <div class="row justify-content-center">
   <div class="col-md-6">
     <div class="card">
       <div class="card-body">
         <h5 class="card-title">Modifica Property Manager</h5>
         <form method="post" action="/anagrafiche/property-manager/{{ pm.id }}/edit">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="mb-3">
             <label class="form-label">Nome</label>
             <input class="form-control" type="text" name="first_name" value="{{ pm.first_name }}" required>
@@ -40,9 +42,11 @@
             </div>
           </div>
           <button class="btn btn-primary" type="submit">Salva</button>
+          <a class="btn btn-secondary" href="{{ return_url }}">Annulla</a>
         </form>
         <!-- Add apartment directly to this PM -->
         <form method="post" action="/anagrafiche/apartment/add" class="mt-3">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="input-group">
             <input class="form-control" type="text" name="name" placeholder="Nuovo appartamento" required>
             <input type="hidden" name="property_manager_id" value="{{ pm.id }}">
@@ -51,6 +55,7 @@
         </form>
         <!-- Assign existing apartment to this PM using combo box -->
         <form method="post" action="/anagrafiche/apartment/assign" class="mt-3">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="input-group">
             <select name="apartment_id" class="form-select">
               <option value="">-- Seleziona appartamento esistente --</option>
@@ -63,6 +68,7 @@
           </div>
         </form>
         <form method="post" action="/anagrafiche/property-manager/{{ pm.id }}/delete" class="mt-2">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <button class="btn btn-danger" type="submit">Elimina PM</button>
         </form>
       </div>

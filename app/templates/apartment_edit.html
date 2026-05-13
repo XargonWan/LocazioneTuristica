@@ -1,12 +1,14 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next is defined and next else '/anagrafiche' %}
 <div class="row justify-content-center">
   <div class="col-md-6">
     <div class="card">
       <div class="card-body">
         <h5 class="card-title">Modifica Appartamento</h5>
         <form method="post" action="/anagrafiche/apartment/{{ apt.id }}/edit">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="mb-3">
             <label class="form-label">Nome</label>
             <input class="form-control" type="text" name="name" value="{{ apt.name }}" required>
@@ -20,9 +22,20 @@
               {% endfor %}
             </select>
           </div>
+          <div class="mb-3">
+            <label class="form-label">Ditta di pulizie predefinita</label>
+            <select name="default_cleaning_company_id" class="form-select">
+              <option value="">---</option>
+              {% for comp in cleaning_companies %}
+                <option value="{{ comp.id }}" {% if apt.default_cleaning_company_id == comp.id %}selected{% endif %}>{{ comp.company_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
           <button class="btn btn-primary" type="submit">Salva</button>
+          <a class="btn btn-secondary" href="{{ return_url }}">Annulla</a>
         </form>
         <form method="post" action="/anagrafiche/apartment/{{ apt.id }}/delete" class="mt-2">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <button class="btn btn-danger" type="submit">Elimina</button>
         </form>
       </div>

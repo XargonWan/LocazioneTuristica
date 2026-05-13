@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% set return_url = next if next is defined and next else '/anagrafiche' %}
 <h1>Anagrafiche</h1>
 
 <div class="row mt-3">
@@ -9,6 +10,7 @@
       <div class="card-body">
         <h5>Property Manager</h5>
         <form method="post" action="/anagrafiche/property-manager/add">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="d-flex">
             <input class="form-control me-2" name="first_name" placeholder="Nome" required>
             <input class="form-control me-2" name="last_name" placeholder="Cognome" required>
@@ -36,7 +38,7 @@
                 </div>
                 <span>
                 {% if request.session.get('role') == 'admin' %}
-                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/property-manager/{{ pm.id }}/edit">Modifica</a>
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/property-manager/{{ pm.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
                 {% endif %}
               </span>
             </li>
@@ -53,6 +55,7 @@
       <div class="card-body">
         <h5>Appartamenti</h5>
         <form method="post" action="/anagrafiche/apartment/add">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="d-flex">
             <input class="form-control me-2" name="name" placeholder="Nome appartamento" required>
             <select name="property_manager_id" class="form-select me-2">
@@ -83,6 +86,7 @@
                 {% if request.session.get('username') %}
                   <form method="post" action="/anagrafiche/apartment/assign" class="d-inline">
                     <input type="hidden" name="apartment_id" value="{{ apt.id }}">
+                    <input type="hidden" name="next" value="{{ return_url }}">
                     <select name="property_manager_id" class="form-select form-select-sm d-inline w-auto me-1">
                       <option value="">---</option>
                       {% for pm in pms %}
@@ -93,7 +97,7 @@
                   </form>
                 {% endif %}
                 {% if request.session.get('role') == 'admin' %}
-                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/apartment/{{ apt.id }}/edit">Modifica</a>
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/apartment/{{ apt.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
                 {% endif %}
               </span>
             </li>
@@ -112,6 +116,7 @@
       <div class="card-body">
         <h5>Ditte / Fornitori</h5>
         <form method="post" action="/anagrafiche/company/add">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="d-flex align-items-center">
             <input class="form-control me-2" name="company_name" placeholder="Nome ditta" required>
             <div class="form-check me-2">
@@ -132,7 +137,7 @@
               </span>
               <span>
                 {% if request.session.get('role') == 'admin' %}
-                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/company/{{ c.id }}/edit">Modifica</a>
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/company/{{ c.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
                 {% endif %}
               </span>
             </li>
@@ -149,6 +154,7 @@
       <div class="card-body">
         <h5>Piattaforme</h5>
         <form method="post" action="/anagrafiche/platform/add">
+          <input type="hidden" name="next" value="{{ return_url }}">
           <div class="d-flex">
             <input class="form-control me-2" name="name" placeholder="Nome piattaforma" required>
             <input class="form-control me-2" name="link" placeholder="Link (opzionale)">
@@ -161,7 +167,7 @@
               <span>{{ p.name }}</span>
               <span>
                 {% if request.session.get('role') == 'admin' %}
-                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/platform/{{ p.id }}/edit">Modifica</a>
+                <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/platform/{{ p.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
                 {% endif %}
               </span>
             </li>

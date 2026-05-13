@@ -52,6 +52,9 @@ class Company(Base):
     notes = Column(Text, nullable=True)
     # indicate if this is a cleaning company (used to filter when selecting services)
     is_cleaning_company = Column(Boolean, default=False)
+    # standard cleaning cost pre-filled in cleaning forms
+    default_gross_amount = Column(DECIMAL(10, 2), nullable=True)
+    default_net_amount = Column(DECIMAL(10, 2), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -73,11 +76,14 @@ class Apartment(Base):
     address = Column(Text, nullable=True)
     locker_code = Column(String, nullable=True)
     property_manager_id = Column(Integer, ForeignKey("property_manager.id"), nullable=True)
+    # default cleaning company auto-filled in cleaning forms
+    default_cleaning_company_id = Column(Integer, ForeignKey("company.id"), nullable=True)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
     property_manager = relationship("PropertyManager")
+    default_cleaning_company = relationship("Company", foreign_keys=[default_cleaning_company_id])
 
 
 class Recurrence(Base):
