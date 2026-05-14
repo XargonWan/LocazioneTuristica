@@ -1,6 +1,11 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% import 'attachment_macros.html' as attachment_ui %}
+{% set income_upload_return = '/money/incomes/' ~ income.id ~ '/edit' %}
+{% if next is defined and next %}
+  {% set income_upload_return = income_upload_return ~ '?next=' ~ (next|urlencode) %}
+{% endif %}
 <div class="row justify-content-center">
   <div class="col-md-8">
     <div class="card">
@@ -86,17 +91,26 @@
           <div class="mb-3">
             <label>Ricorrenza</label>
             <select name="recurrence" class="form-control">
-              <option value="none" {% if not income.recurrence %}selected{% endif %}>Mai</option>
+              <option value="none" {% if not income.recurrence_id %}selected{% endif %}>Mai</option>
               <option value="monthly" {% if income.recurrence and income.recurrence.type == 'monthly' %}selected{% endif %}>Mensile</option>
               <option value="yearly" {% if income.recurrence and income.recurrence.type == 'yearly' %}selected{% endif %}>Annuale</option>
             </select>
-            <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future.</small>
+            <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future. Lascia vuoto "Fino a" per una ricorrenza senza scadenza, calcolata fino a dicembre dell'anno corrente.</small>
           </div>
-          {% set orig_id = income._orig_recurrence_id if income._orig_recurrence_id is defined else '' %}
+          {% set orig_id = income.orig_recurrence_id or '' %}
           <input type="hidden" name="orig_recurrence_id" value="{{ orig_id }}">
           {% if orig_id and not income.recurrence_id %}
-          <div class="alert alert-info">
-            Questa voce appartiene a una serie ricorrente (ID {{ orig_id }}); è stata staccata dalla serie.
+          <div class="alert alert-info d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <span>
+              Questa voce è stata staccata dalla serie ricorrente (ID {{ orig_id }}).
+              {% if display_recurrence %}
+                Serie originaria:
+                {{ 'Mensile' if display_recurrence.type == 'monthly' else 'Annuale' if display_recurrence.type == 'yearly' else 'Ricorrente' }}
+                da {{ display_recurrence.start_date[:7] if display_recurrence.start_date else '-' }}
+                {% if display_recurrence.end_date %}a {{ display_recurrence.end_date[:7] }}{% else %}senza scadenza{% endif %}.
+              {% endif %}
+            </span>
+            <button class="btn btn-info btn-sm text-dark" type="submit" name="rejoin_recurrence" value="1" onclick="return confirm('Questa voce verrà completamente riallineata per tornare come le altre voci della ricorrenza. Continuare?');">Falla rientrare nella serie</button>
           </div>
           {% endif %}
           <div class="mb-3">
@@ -113,56 +127,108 @@
             <label>Fino a (mese/anno)</label>
             {% set end_val = income.recurrence.end_date[:7] if income.recurrence and income.recurrence.end_date else '' %}
             <input type="month" name="recurrence_end" class="form-control" value="{{ end_val }}">
+            <small class="text-muted">Vuoto = ricorrenza senza scadenza, estesa automaticamente fino a dicembre dell'anno corrente.</small>
           </div>
           <script>
             (function(){
               const sel = document.querySelector('select[name="recurrence"]');
+              const dateInput = document.querySelector('input[name="date"]');
+              const startInput = document.querySelector('input[name="recurrence_start"]');
+              const endInput = document.querySelector('input[name="recurrence_end"]');
               const rangeElems = document.querySelectorAll('.recurrence-range');
+              const startLabel = startInput ? startInput.closest('.mb-3').querySelector('label') : null;
+              const endLabel = endInput ? endInput.closest('.mb-3').querySelector('label') : null;
+
+              function setInputMode(input, yearly){
+                if(!input){
+                  return;
+                }
+                if(yearly){
+                  if(input.value && input.value.includes('-')){
+                    input.value = input.value.slice(0, 4);
+                  }
+                  input.type = 'number';
+                  input.min = 2000;
+                  input.max = 3000;
+                  return;
+                }
+                if(input.value && /^\d{4}$/.test(input.value)){
+                  input.value = `${input.value}-01`;
+                }
+                input.type = 'month';
+                input.removeAttribute('min');
+                input.removeAttribute('max');
+              }
+
+              function maybeDefaultStart(yearly){
+                if(!startInput || startInput.value || !dateInput || !dateInput.value){
+                  return;
+                }
+                startInput.value = yearly ? dateInput.value.slice(0, 4) : dateInput.value.slice(0, 7);
+              }
+
               function update(){
                 const show = sel && sel.value !== 'none';
                 const yearly = sel && sel.value === 'yearly';
                 rangeElems.forEach(e=>{
                   e.style.display = show ? 'block' : 'none';
-                  const inp = e.querySelector('input');
-                  const lbl = e.querySelector('label');
-                  if(inp){
-                    if(yearly){ inp.type='number'; inp.min=2000; inp.max=3000; }
-                    else { inp.type='month'; inp.removeAttribute('min'); inp.removeAttribute('max'); }
-                  }
-                  if(lbl){
-                    if(yearly){ lbl.textContent = lbl.textContent.replace('mese/anno','anno'); }
-                    else { lbl.textContent = lbl.textContent.replace('anno','mese/anno'); }
+                });
+                setInputMode(startInput, yearly);
+                setInputMode(endInput, yearly);
+                if(startLabel){
+                  startLabel.textContent = yearly ? 'Da (anno)' : 'Da (mese/anno)';
+                }
+                if(endLabel){
+                  endLabel.textContent = yearly ? 'Fino a (anno)' : 'Fino a (mese/anno)';
+                }
+                if(show){
+                  maybeDefaultStart(yearly);
+                }
+              }
+              if(sel){ sel.addEventListener('change', update); update(); }
+              if(dateInput){
+                dateInput.addEventListener('change', ()=>{
+                  if(sel && sel.value !== 'none'){
+                    maybeDefaultStart(sel.value === 'yearly');
                   }
                 });
               }
-              if(sel){ sel.addEventListener('change', update); update(); }
             })();
           </script>
-          {% if income.recurrence_id or income._orig_recurrence_id is defined %}
+          {% if income.recurrence_id %}
           <div class="mb-3">
             <label>Applica modifiche a</label>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single" {% if not (income.recurrence_id or income._orig_recurrence_id) %}checked{% endif %}>
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single">
               <label class="form-check-label" for="apply_single">Solo questa voce (esci dal cluster)</label>
             </div>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series" {% if income.recurrence_id or income._orig_recurrence_id %}checked{% endif %}>
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series" checked>
               <label class="form-check-label" for="apply_series">Tutta la serie ricorrente (modifica tutte le voci)</label>
             </div>
           </div>
           {% endif %}
           <div class="mb-3">
             <label>Allegati</label>
-            <ul>
+            <ul class="list-unstyled mb-0">
               {% for a in attached %}
-                <li><a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a></li>
+                <li class="mb-2">{{ attachment_ui.action_row(a, income_upload_return, request.session.get('role') == 'admin') }}</li>
               {% else %}
                 <li>Nessun allegato</li>
               {% endfor %}
             </ul>
+            <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+              <input type="file" name="file" id="income_edit_attachment_file" class="form-control" form="incomeEditAttachmentUploadForm" required multiple>
+              <button class="btn btn-outline-secondary btn-sm" type="submit" form="incomeEditAttachmentUploadForm">Carica allegati</button>
+            </div>
+            <small class="text-muted">Puoi selezionare piu file insieme.</small>
           </div>
           <button class="btn btn-primary" type="submit">Salva</button>
           <a class="btn btn-secondary ms-2" href="{{ next if next is defined and next else '/money/incomes' }}">Annulla</a>
+        </form>
+        <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="incomeEditAttachmentUploadForm">
+          <input type="hidden" name="next" value="{{ income_upload_return }}">
+          <input type="hidden" name="income_id" value="{{ income.id }}">
         </form>
         <form method="post" action="/money/incomes/{{ income.id }}/delete" class="mt-2">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">

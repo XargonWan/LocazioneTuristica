@@ -10,7 +10,7 @@ from app.db import engine
 engine.dispose()
 from app.main import app
 from app.db import SessionLocal
-from app.models import Income, Expense, Recurrence, Company, Cleaning, CleaningService, Apartment, User
+from app.models import Income, Expense, Recurrence, Company, Cleaning, CleaningService, Apartment, PropertyManager, User
 
 pytestmark = pytest.mark.db_backup
 
@@ -128,6 +128,28 @@ def test_bulk_edit_expenses():
         db.commit(); db.close()
 
 
+def test_bulk_edit_expenses_calculates_gross_from_net():
+    db = SessionLocal()
+    try:
+        e1 = Expense(apartment_id=None, date='2025-01-01', gross_amount=50.0, vat_percent=22.0, net_amount=39.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=39.0, notes='bulk-net-1')
+        e2 = Expense(apartment_id=None, date='2025-02-01', gross_amount=30.0, vat_percent=10.0, net_amount=27.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=27.0, notes='bulk-net-2')
+        db.add_all([e1, e2]); db.commit()
+        ids = f"{e1.id},{e2.id}"
+        resp = client.post(
+            '/money/expenses/bulk_edit',
+            data={'ids': ids, 'net_amount': '78.0', 'vat_percent': '22.0'},
+            follow_redirects=False,
+        )
+        assert resp.status_code in (200, 303)
+        db.refresh(e1); db.refresh(e2)
+        assert float(e1.net_amount) == 78.0 and float(e2.net_amount) == 78.0
+        assert float(e1.gross_amount) == 100.0 and float(e2.gross_amount) == 100.0
+        assert float(e1.vat_percent) == 22.0 and float(e2.vat_percent) == 22.0
+    finally:
+        db.query(Expense).filter(Expense.id.in_([e1.id, e2.id])).delete()
+        db.commit(); db.close()
+
+
 def test_bulk_mark_cleaning_expenses():
     db = SessionLocal()
     try:
@@ -181,28 +203,88 @@ def test_overview_page_net_calculation():
         pm = PropertyManager(first_name='Foo', last_name='Bar', percent=0.0)
         db.add(pm)
         db.commit()
-        inc = Income(apartment_id=None, platform_id=None, date='2025-01-01', gross_amount=100.0,
+        inc = Income(apartment_id=None, platform_id=None, date='2031-01-01', gross_amount=100.0,
                      vat_percent=22.0, net_amount=80.0, pm_percent=10.0, pm_amount=10.0, net_after_pm=70.0,
                      notes='rent')
         # expense small enough to keep pm_due positive when subtracted
-        exp = Expense(apartment_id=None, date='2025-01-01', gross_amount=5.0,
+        exp = Expense(apartment_id=None, date='2031-01-01', gross_amount=5.0,
                       vat_percent=22.0, net_amount=3.9, pm_percent=0.0, pm_amount=0.0, net_after_pm=3.9,
                       associated_pm_id=pm.id,
                       notes='payment')
         db.add_all([inc, exp]); db.commit()
-        resp = client.get('/overview?year=2025')
+        resp = client.get('/overview?year=2031')
         assert resp.status_code == 200
         text = resp.text
         # the month total should be net_after_pm income (70) minus gross expense (5) = 65
-        assert 'Gennaio - <span class="net-total net-positive">€65.00' in text
+        assert 'Gennaio - Risultato del mese: <span class="net-total net-positive">€65.00' in text
         # pm_due initially 10 from income, minus 5 payment = 5
-        assert 'PM dovuto: €5.00' in text
+        assert 'PM ancora da versare: €5.00' in text
     finally:
         # cleanup inserted data
         db.query(Income).filter(Income.id == inc.id).delete()
         db.query(Expense).filter(Expense.id == exp.id).delete()
         db.query(PropertyManager).filter(PropertyManager.id == pm.id).delete()
         db.commit()
+        db.close()
+
+
+def test_overview_page_annual_totals_split_real_and_virtual():
+    db = SessionLocal()
+    try:
+        pm = PropertyManager(first_name='Annual', last_name='PM', percent=0.0)
+        db.add(pm)
+        db.commit()
+
+        income = Income(
+            apartment_id=None,
+            platform_id=None,
+            date='2032-01-10',
+            gross_amount=100.0,
+            vat_percent=22.0,
+            net_amount=80.0,
+            pm_percent=10.0,
+            pm_amount=10.0,
+            net_after_pm=70.0,
+            notes='annual-rent',
+        )
+        regular_expense = Expense(
+            apartment_id=None,
+            date='2032-01-12',
+            gross_amount=15.0,
+            vat_percent=22.0,
+            net_amount=11.7,
+            pm_percent=0.0,
+            pm_amount=0.0,
+            net_after_pm=11.7,
+            notes='maintenance',
+        )
+        pm_payment = Expense(
+            apartment_id=None,
+            date='2032-01-20',
+            gross_amount=6.0,
+            vat_percent=22.0,
+            net_amount=4.68,
+            pm_percent=0.0,
+            pm_amount=0.0,
+            net_after_pm=4.68,
+            associated_pm_id=pm.id,
+            notes='pm-payment',
+        )
+        db.add_all([income, regular_expense, pm_payment])
+        db.commit()
+
+        resp = client.get('/overview?year=2032')
+        assert resp.status_code == 200
+        text = resp.text
+        assert 'Entrate nette:</strong> <span>€80.00</span>' in text
+        assert 'Spese:</strong> <span>€15.00</span>' in text
+        assert 'PM gia versato:</strong> <span>€6.00</span>' in text
+        assert 'PM ancora da versare:</strong> <span>€4.00</span>' in text
+        assert 'Gran totale reale:</strong> <span class="net-total net-positive">€59.00</span>' in text
+        assert 'Gran totale virtuale:</strong> <span class="net-total net-positive">€55.00</span>' in text
+        assert 'id="overview-table"' not in text
+        assert '<th>Mese</th>' not in text
+    finally:
         db.close()
 
 
@@ -287,24 +369,71 @@ def test_cleaning_service_crud():
 def test_api_stats_monthly_includes_net_and_expense():
     db = SessionLocal()
     try:
-        inc = Income(apartment_id=None, platform_id=None, date='2025-02-01', gross_amount=200.0,
+        stats_year = 2037
+        inc = Income(apartment_id=None, platform_id=None, date=f'{stats_year}-02-01', gross_amount=200.0,
                      vat_percent=22.0, net_amount=160.0, pm_percent=5.0, pm_amount=8.0, net_after_pm=152.0,
                      notes='room')
-        exp = Expense(apartment_id=None, date='2025-02-15', gross_amount=50.0,
+        exp = Expense(apartment_id=None, date=f'{stats_year}-02-15', gross_amount=50.0,
                       vat_percent=22.0, net_amount=41.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=41.0,
                       notes='clean', is_cleaning=True)
         db.add_all([inc, exp]); db.commit()
-        resp = client.get('/api/stats/monthly?year=2025')
+        resp = client.get(f'/api/stats/monthly?year={stats_year}')
         assert resp.status_code == 200
-        data = resp.json()['data']
+        payload = resp.json()
+        data = payload['data']
         feb = next((m for m in data if m['month'] == 2), None)
         assert feb is not None
         # should equal net_after_pm income (152) and gross expense (50)
         assert feb['income'] == 152.0
         assert feb['expense'] == 50.0
+        assert payload['totals']['pm_paid'] == 0.0
+        assert payload['totals']['pm_due'] == 8.0
+        assert payload['totals']['grand_total_real'] == 110.0
+        assert payload['totals']['grand_total_virtual'] == 102.0
     finally:
         db.query(Income).filter(Income.id == inc.id).delete()
         db.query(Expense).filter(Expense.id == exp.id).delete()
+        db.commit()
+        db.close()
+
+
+def test_api_stats_monthly_all_years_aggregates_same_month_and_pm_due():
+    db = SessionLocal()
+    try:
+        pm = PropertyManager(first_name='All', last_name='Years', percent=10.0)
+        db.add(pm)
+        db.commit()
+        db.refresh(pm)
+        inc1 = Income(apartment_id=None, platform_id=None, date='2037-02-01', gross_amount=100.0,
+                      vat_percent=0.0, net_amount=100.0, pm_percent=10.0, pm_amount=10.0, net_after_pm=90.0,
+                      associated_pm_id=pm.id, notes='year-one')
+        inc2 = Income(apartment_id=None, platform_id=None, date='2038-02-01', gross_amount=200.0,
+                      vat_percent=0.0, net_amount=200.0, pm_percent=10.0, pm_amount=20.0, net_after_pm=180.0,
+                      associated_pm_id=pm.id, notes='year-two')
+        exp = Expense(apartment_id=None, date='2037-02-15', gross_amount=30.0,
+                      vat_percent=0.0, net_amount=30.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=30.0,
+                      notes='ops')
+        pm_payment = Expense(apartment_id=None, date='2038-02-20', gross_amount=15.0,
+                             vat_percent=0.0, net_amount=15.0, associated_pm_id=pm.id,
+                             notes='pm payment')
+        db.add_all([inc1, inc2, exp, pm_payment])
+        db.commit()
+
+        resp = client.get(f'/api/stats/monthly?year=0&pm_id={pm.id}')
+        assert resp.status_code == 200
+        payload = resp.json()
+        feb = next((month for month in payload['data'] if month['month'] == 2), None)
+        assert feb is not None
+        assert feb['income'] == 270.0
+        assert feb['expense'] == 15.0
+        assert payload['totals']['pm_paid'] == 15.0
+        assert payload['totals']['pm_due'] == 15.0
+        assert payload['totals']['grand_total_real'] == 285.0
+        assert payload['totals']['grand_total_virtual'] == 270.0
+    finally:
+        db.query(Income).filter(Income.id.in_([inc1.id, inc2.id])).delete()
+        db.query(Expense).filter(Expense.id.in_([exp.id, pm_payment.id])).delete()
+        db.query(PropertyManager).filter(PropertyManager.id == pm.id).delete()
         db.commit()
         db.close()
 

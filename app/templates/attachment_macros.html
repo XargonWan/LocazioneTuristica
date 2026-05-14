@@ -1,0 +1,18 @@
+{% macro action_row(attachment, next_url, is_admin=False, show_meta=False) -%}
+<div class="d-flex flex-wrap gap-2 align-items-center">
+  <span class="fw-semibold">{{ attachment.filename }}</span>
+  {% if show_meta %}
+  <span class="text-muted small">
+    {{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}
+  </span>
+  {% endif %}
+  <a class="btn btn-sm btn-outline-primary" href="/attachments/{{ attachment.id }}/view?next={{ next_url|urlencode }}">View</a>
+  <a class="btn btn-sm btn-outline-secondary" href="/attachments/download/{{ attachment.id }}">Download</a>
+  {% if is_admin %}
+  <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Eliminare questo allegato?');">Delete</button>
+  </form>
+  {% endif %}
+</div>
+{%- endmacro %}

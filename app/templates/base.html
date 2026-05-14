@@ -34,6 +34,7 @@
             <a class="nav-link" href="/overview">Rendiconto</a>
             <a class="nav-link" href="/anagrafiche">Anagrafiche</a>
             <a class="nav-link" href="/cleaning">Pulizie</a>
+            <a class="nav-link" href="/attachments">Documenti</a>
             <a class="nav-link" href="/stats">Statistiche</a>
             <a class="nav-link" href="/settings">Impostazioni</a>
           </div>
@@ -147,98 +148,6 @@
           }
         });
       });
-      // Overview per-year chart loader
-      async function loadOverviewYearly(year) {
-        const res = await fetch(`/api/stats/monthly?year=${year}`, { credentials: 'same-origin' });
-        if (!res.ok) {
-          console.error('Failed to load monthly stats for year', year);
-          return null;
-        }
-        const js = await res.json();
-        return js; // return entire object including totals
-      }
-      function renderOverviewChart(data) {
-        const el = document.getElementById('overview-chart');
-        if (!el) return; // if there's no chart on the page, do nothing
-        const labels = data.map(d => d.month_name);
-        const incomes = data.map(d => +d.income);
-        const expenses = data.map(d => +d.expense);
-        const ctx = el.getContext('2d');
-        if (window.overviewChart) { window.overviewChart.destroy(); }
-        const incomeColor = (getComputedStyle(document.documentElement).getPropertyValue('--income-color') || '#1fa64a').trim();
-        const expenseColor = (getComputedStyle(document.documentElement).getPropertyValue('--expense-color') || '#d9534f').trim();
-        window.overviewChart = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [
-              { label: 'Entrate', data: incomes, backgroundColor: incomeColor },
-              { label: 'Spese', data: expenses, backgroundColor: expenseColor }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { tooltip: { mode: 'index' }, legend: { position: 'top' } },
-            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
-          }
-        });
-      }
-      function renderOverviewTable(data) {
-        const tbody = document.querySelector('#overview-table tbody');
-        tbody.innerHTML = '';
-        data.forEach(d => {
-          const net = (Number(d.income) - Number(d.expense));
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${d.month_name}</td>
-            <td class="text-end">€${Number(d.income).toFixed(2)}</td>
-            <td class="text-end">€${Number(d.expense).toFixed(2)}</td>
-            <td class="text-end ${net>0? 'net-positive' : net<0 ? 'net-negative' : 'net-zero'}">€${net.toFixed(2)}</td>
-          `;
-          tbody.appendChild(tr);
-        });
-      }
-      function initOverviewControls() {
-        const sel = document.getElementById('overview-year');
-        if (!sel) return;
-        const now = new Date();
-        const defaultYearFromServer = '{{ year | default('') }}';
-        const year = defaultYearFromServer ? parseInt(defaultYearFromServer, 10) : now.getFullYear();
-        // if server provided an explicit list of years with data, use it instead
-        if (window.overviewAvailableYears && Array.isArray(window.overviewAvailableYears) && window.overviewAvailableYears.length) {
-          window.overviewAvailableYears.forEach(y => {
-            const o = document.createElement('option'); o.value = y; o.text = y; sel.appendChild(o);
-          });
-        } else {
-          for (let y = year; y >= year - 5; --y) {
-            const o = document.createElement('option'); o.value = y; o.text = y; sel.appendChild(o);
-          }
-        }
-        sel.value = year;
-        const refresh = document.getElementById('overview-refresh');
-        async function refreshHandler() {
-          const yr = sel.value;
-          const js = await loadOverviewYearly(yr);
-          if (!js) return;
-          renderOverviewChart(js.data);
-          renderOverviewTable(js.data);
-          // update totals
-          const totals = js.totals || {};
-          const elInc = document.getElementById('tot-inc');
-          const elExp = document.getElementById('tot-exp');
-          const elPm = document.getElementById('tot-pm');
-          const elPmPct = document.getElementById('tot-pm-pct');
-          if (elInc) elInc.textContent = `€${Number(totals.income || 0).toFixed(2)}`;
-          if (elExp) elExp.textContent = `€${Number(totals.expense || 0).toFixed(2)}`;
-          if (elPm) elPm.textContent = `€${Number(totals.pm_paid || 0).toFixed(2)}`;
-          if (elPmPct) elPmPct.textContent = `${Number(totals.pm_percent || 0).toFixed(2)}%`;
-        }
-        refresh.addEventListener('click', refreshHandler);
-        // initial load
-        refreshHandler();
-      }
-      document.addEventListener('DOMContentLoaded', initOverviewControls);
       // Global toggleEditMode fallback: attach a function to window so inline onclick can call it
       if (!window.toggleEditMode) {
         window.toggleEditMode = function(type){

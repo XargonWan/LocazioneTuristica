@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.db import SessionLocal
 from app.main import app
-from app.models import Apartment, Attachment, Cleaning, Company, Expense, Settings, User
+from app.models import Apartment, Attachment, Cleaning, Company, Expense, Income, Settings, User
 from app.routers.attachments import UPLOAD_DIR
 from app.routers.auth import pwd_context
 
@@ -159,6 +159,333 @@ def test_attachment_upload_redirects_to_next():
     finally:
         if attachment is not None:
             db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+            db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_attachment_upload_attaches_to_expense():
+    db = SessionLocal()
+    attachment = None
+    expense = None
+    file_path = None
+    try:
+        create_admin(db)
+        expense = Expense(date='2025-01-01', gross_amount=10.0, net_amount=10.0, vat_percent=0.0, notes=f'attachment-expense-{uuid.uuid4().hex[:8]}')
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        filename = f'expense-attachment-{uuid.uuid4().hex[:8]}.pdf'
+        response = client.post(
+            '/attachments/upload',
+            data={'next': f'/money/expenses/{expense.id}/edit', 'expense_id': str(expense.id)},
+            files={'file': (filename, b'%PDF-1.4\n%expense-test\n', 'application/pdf')},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == f'/money/expenses/{expense.id}/edit'
+        attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
+        assert attachment is not None
+        assert attachment.expense_id == expense.id
+        assert attachment.income_id is None
+        file_path = attachment.disk_path
+        assert os.path.exists(file_path)
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+        if expense is not None:
+            db.query(Expense).filter(Expense.id == expense.id).delete()
+        db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_attachment_upload_attaches_to_income():
+    db = SessionLocal()
+    attachment = None
+    income = None
+    file_path = None
+    try:
+        create_admin(db)
+        income = Income(date='2025-01-01', gross_amount=10.0, net_amount=10.0, vat_percent=0.0, notes=f'attachment-income-{uuid.uuid4().hex[:8]}')
+        db.add(income)
+        db.commit()
+        db.refresh(income)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        filename = f'income-attachment-{uuid.uuid4().hex[:8]}.pdf'
+        response = client.post(
+            '/attachments/upload',
+            data={'next': f'/money/incomes/{income.id}/edit', 'income_id': str(income.id)},
+            files={'file': (filename, b'%PDF-1.4\n%income-test\n', 'application/pdf')},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == f'/money/incomes/{income.id}/edit'
+        attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
+        assert attachment is not None
+        assert attachment.income_id == income.id
+        assert attachment.expense_id is None
+        file_path = attachment.disk_path
+        assert os.path.exists(file_path)
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+        if income is not None:
+            db.query(Income).filter(Income.id == income.id).delete()
+        db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_expenses_create_mode_hides_history_and_filters_linked_attachments():
+    db = SessionLocal()
+    expense = None
+    unattached = None
+    linked = None
+    try:
+        create_admin(db)
+        expense = Expense(date='2025-01-01', gross_amount=25.0, net_amount=25.0, vat_percent=0.0, notes=f'create-mode-expense-{uuid.uuid4().hex[:8]}')
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+
+        linked = Attachment(
+            filename=f'linked-{uuid.uuid4().hex[:8]}.pdf',
+            disk_path=f'/tmp/linked-{uuid.uuid4().hex[:8]}.pdf',
+            mimetype='application/pdf',
+            size=10,
+            expense_id=expense.id,
+        )
+        unattached = Attachment(
+            filename=f'unattached-{uuid.uuid4().hex[:8]}.pdf',
+            disk_path=f'/tmp/unattached-{uuid.uuid4().hex[:8]}.pdf',
+            mimetype='application/pdf',
+            size=10,
+        )
+        db.add_all([linked, unattached])
+        db.commit()
+        db.refresh(linked)
+        db.refresh(unattached)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        response = client.get('/money/expenses?mode=create&next=/overview?year=2025')
+
+        assert response.status_code == 200
+        assert 'Aggiungi spesa' in response.text
+        assert expense.notes not in response.text
+        assert linked.filename not in response.text
+        assert unattached.filename in response.text
+        assert 'Documenti nel menu' in response.text
+    finally:
+        if linked is not None:
+            db.query(Attachment).filter(Attachment.id == linked.id).delete()
+        if unattached is not None:
+            db.query(Attachment).filter(Attachment.id == unattached.id).delete()
+        if expense is not None:
+            db.query(Expense).filter(Expense.id == expense.id).delete()
+        db.commit()
+        db.close()
+
+
+def test_attachment_view_renders_pdf_preview_and_inline_content():
+    db = SessionLocal()
+    attachment = None
+    file_path = None
+    try:
+        create_admin(db)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        filename = f'view-attachment-{uuid.uuid4().hex[:8]}.pdf'
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        with open(file_path, 'wb') as handle:
+            handle.write(b'%PDF-1.4\n%viewer-test\n')
+
+        attachment = Attachment(
+            filename=filename,
+            disk_path=file_path,
+            mimetype='application/pdf',
+            size=os.path.getsize(file_path),
+        )
+        db.add(attachment)
+        db.commit()
+        db.refresh(attachment)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        response = client.get(f'/attachments/{attachment.id}/view?next=/overview?year=2025')
+
+        assert response.status_code == 200
+        assert 'href="/overview?year=2025"' in response.text
+        assert f'/attachments/{attachment.id}/inline' in response.text
+        assert f'/attachments/download/{attachment.id}' in response.text
+        assert f'/attachments/{attachment.id}/delete' in response.text
+
+        inline_response = client.get(f'/attachments/{attachment.id}/inline', follow_redirects=False)
+        assert inline_response.status_code == 200
+        assert inline_response.headers['content-type'].startswith('application/pdf')
+        assert 'inline' in inline_response.headers.get('content-disposition', '')
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+            db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_attachment_delete_uses_attachment_context_and_removes_file():
+    db = SessionLocal()
+    attachment = None
+    expense = None
+    file_path = None
+    try:
+        create_admin(db)
+        expense = Expense(date='2025-01-01', gross_amount=10.0, net_amount=10.0, vat_percent=0.0, notes=f'delete-attachment-expense-{uuid.uuid4().hex[:8]}')
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        filename = f'delete-attachment-{uuid.uuid4().hex[:8]}.pdf'
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        with open(file_path, 'wb') as handle:
+            handle.write(b'%PDF-1.4\n%delete-test\n')
+
+        attachment = Attachment(
+            filename=filename,
+            disk_path=file_path,
+            mimetype='application/pdf',
+            size=os.path.getsize(file_path),
+            expense_id=expense.id,
+        )
+        db.add(attachment)
+        db.commit()
+        db.refresh(attachment)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        response = client.post(f'/attachments/{attachment.id}/delete', follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.headers['location'] == f'/money/expenses/{expense.id}/edit'
+        assert db.query(Attachment).filter(Attachment.id == attachment.id).first() is None
+        assert not os.path.exists(file_path)
+    finally:
+        if expense is not None:
+            db.query(Expense).filter(Expense.id == expense.id).delete()
+        db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_attachment_upload_accepts_multiple_files_for_expense():
+    db = SessionLocal()
+    expense = None
+    attachments = []
+    try:
+        create_admin(db)
+        expense = Expense(date='2025-01-01', gross_amount=10.0, net_amount=10.0, vat_percent=0.0, notes=f'multi-attachment-expense-{uuid.uuid4().hex[:8]}')
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        filename_one = f'multi-expense-{uuid.uuid4().hex[:8]}-1.pdf'
+        filename_two = f'multi-expense-{uuid.uuid4().hex[:8]}-2.pdf'
+        response = client.post(
+            '/attachments/upload',
+            data={'next': f'/money/expenses/{expense.id}/edit', 'expense_id': str(expense.id)},
+            files=[
+                ('file', (filename_one, b'%PDF-1.4\n%multi-one\n', 'application/pdf')),
+                ('file', (filename_two, b'%PDF-1.4\n%multi-two\n', 'application/pdf')),
+            ],
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == f'/money/expenses/{expense.id}/edit'
+        attachments = db.query(Attachment).filter(Attachment.filename.in_([filename_one, filename_two])).order_by(Attachment.id.asc()).all()
+        assert len(attachments) == 2
+        assert all(attachment.expense_id == expense.id for attachment in attachments)
+        assert all(os.path.exists(attachment.disk_path) for attachment in attachments)
+    finally:
+        if attachments:
+            for attachment in attachments:
+                db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+            db.commit()
+            for attachment in attachments:
+                if attachment.disk_path and os.path.exists(attachment.disk_path):
+                    os.remove(attachment.disk_path)
+        if expense is not None:
+            db.query(Expense).filter(Expense.id == expense.id).delete()
+            db.commit()
+        db.close()
+
+
+def test_overview_shows_attachment_clip_for_linked_income():
+    db = SessionLocal()
+    income = None
+    attachment = None
+    file_path = None
+    try:
+        create_admin(db)
+        income = Income(date='2042-01-01', gross_amount=100.0, net_amount=78.0, vat_percent=22.0, notes=f'overview-attachment-income-{uuid.uuid4().hex[:8]}')
+        db.add(income)
+        db.commit()
+        db.refresh(income)
+
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        filename = f'overview-attachment-{uuid.uuid4().hex[:8]}.pdf'
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        with open(file_path, 'wb') as handle:
+            handle.write(b'%PDF-1.4\n%overview-attachment\n')
+
+        attachment = Attachment(
+            filename=filename,
+            disk_path=file_path,
+            mimetype='application/pdf',
+            size=os.path.getsize(file_path),
+            income_id=income.id,
+        )
+        db.add(attachment)
+        db.commit()
+        db.refresh(attachment)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        response = client.get('/overview?year=2042')
+
+        assert response.status_code == 200
+        assert '📎' in response.text
+        assert f'ovAttachmentModal-income-{income.id}' in response.text
+        assert f'/attachments/{attachment.id}/view?next=' in response.text
+        assert f'/attachments/download/{attachment.id}' in response.text
+        assert f'/attachments/{attachment.id}/delete' not in response.text
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+            db.commit()
+        if income is not None:
+            db.query(Income).filter(Income.id == income.id).delete()
             db.commit()
         if file_path and os.path.exists(file_path):
             os.remove(file_path)

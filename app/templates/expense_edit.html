@@ -1,6 +1,11 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% import 'attachment_macros.html' as attachment_ui %}
+{% set expense_upload_return = '/money/expenses/' ~ expense.id ~ '/edit' %}
+{% if next is defined and next %}
+  {% set expense_upload_return = expense_upload_return ~ '?next=' ~ (next|urlencode) %}
+{% endif %}
 <div class="row justify-content-center">
   <div class="col-md-8">
     <div class="card">
@@ -21,7 +26,7 @@
           </div>
         </div>
         {% endif %}
-        <form method="post" action="/money/expenses/{{ expense.id }}/edit">
+        <form method="post" action="/money/expenses/{{ expense.id }}/edit" id="expenseEditForm">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <div class="mb-3">
             <label>Data</label>
@@ -29,15 +34,16 @@
           </div>
           <div class="mb-3">
             <label>Importo lordo</label>
-            <input type="number" name="gross_amount" step="0.01" class="form-control" value="{{ expense.gross_amount }}" required>
+            <input type="number" name="gross_amount" step="0.01" class="form-control" id="expense_edit_gross_amount" value="{{ expense.gross_amount }}">
           </div>
           <div class="mb-3">
             <label>Importo netto</label>
-            <input type="number" name="net_amount" step="0.01" class="form-control" value="{{ expense.net_amount }}">
+            <input type="number" name="net_amount" step="0.01" class="form-control" id="expense_edit_net_amount" value="{{ expense.net_amount }}">
+            <small class="text-muted">Puoi inserire il lordo o il netto: l'altro importo viene calcolato automaticamente in base all'IVA.</small>
           </div>
           <div class="mb-3">
             <label>IVA (%)</label>
-            <input type="number" name="vat_percent" step="0.01" class="form-control" value="{{ expense.vat_percent }}">
+            <input type="number" name="vat_percent" step="0.01" class="form-control" id="expense_edit_vat_percent" value="{{ expense.vat_percent }}">
           </div>
           {# PM percentage removed for expenses; payments to PM are handled separately #}
           <div class="mb-3">
@@ -92,17 +98,26 @@
             <div class="mb-3">
               <label>Ricorrenza</label>
               <select name="recurrence" class="form-control">
-                <option value="none" {% if not expense.recurrence %}selected{% endif %}>Mai</option>
+                <option value="none" {% if not expense.recurrence_id %}selected{% endif %}>Mai</option>
                 <option value="monthly" {% if expense.recurrence and expense.recurrence.type == 'monthly' %}selected{% endif %}>Mensile</option>
                 <option value="yearly" {% if expense.recurrence and expense.recurrence.type == 'yearly' %}selected{% endif %}>Annuale</option>
               </select>
-              <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future.</small>
+              <small class="text-muted">Se imposti una ricorrenza, questa voce diventerà l'inizio della serie e verranno generate le occorrenze future. Lascia vuoto "Fino a" per una ricorrenza senza scadenza, calcolata fino a dicembre dell'anno corrente.</small>
             </div>
-            {% set orig_id = expense._orig_recurrence_id if expense._orig_recurrence_id is defined else '' %}
+            {% set orig_id = expense.orig_recurrence_id or '' %}
             <input type="hidden" name="orig_recurrence_id" value="{{ orig_id }}">
             {% if orig_id and not expense.recurrence_id %}
-            <div class="alert alert-info">
-              Questa voce appartiene a una serie ricorrente (ID {{ orig_id }}); rimessa manualmente fuori dalla serie.
+            <div class="alert alert-info d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <span>
+                Questa voce è stata staccata dalla serie ricorrente (ID {{ orig_id }}).
+                {% if display_recurrence %}
+                  Serie originaria:
+                  {{ 'Mensile' if display_recurrence.type == 'monthly' else 'Annuale' if display_recurrence.type == 'yearly' else 'Ricorrente' }}
+                  da {{ display_recurrence.start_date[:7] if display_recurrence.start_date else '-' }}
+                  {% if display_recurrence.end_date %}a {{ display_recurrence.end_date[:7] }}{% else %}senza scadenza{% endif %}.
+                {% endif %}
+              </span>
+              <button class="btn btn-info btn-sm text-dark" type="submit" name="rejoin_recurrence" value="1" onclick="return confirm('Questa voce verrà completamente riallineata per tornare come le altre voci della ricorrenza. Continuare?');">Falla rientrare nella serie</button>
             </div>
             {% endif %}
             <div class="mb-3">
@@ -119,42 +134,75 @@
               <label>Fino a (mese/anno)</label>
               {% set end_val = expense.recurrence.end_date[:7] if expense.recurrence and expense.recurrence.end_date else '' %}
               <input type="month" name="recurrence_end" class="form-control" value="{{ end_val }}">
+              <small class="text-muted">Vuoto = ricorrenza senza scadenza, estesa automaticamente fino a dicembre dell'anno corrente.</small>
             </div>
           <script>
             // show/hide and adjust range inputs when recurrence selection changes
             (function(){
               const sel = document.querySelector('select[name="recurrence"]');
+              const dateInput = document.querySelector('input[name="date"]');
+              const startInput = document.querySelector('input[name="recurrence_start"]');
+              const endInput = document.querySelector('input[name="recurrence_end"]');
               const rangeElems = document.querySelectorAll('.recurrence-range');
+              const startLabel = startInput ? startInput.closest('.mb-3').querySelector('label') : null;
+              const endLabel = endInput ? endInput.closest('.mb-3').querySelector('label') : null;
+
+              function setInputMode(input, yearly){
+                if(!input){
+                  return;
+                }
+                if(yearly){
+                  if(input.value && input.value.includes('-')){
+                    input.value = input.value.slice(0, 4);
+                  }
+                  input.type = 'number';
+                  input.min = 2000;
+                  input.max = 3000;
+                  return;
+                }
+                if(input.value && /^\d{4}$/.test(input.value)){
+                  input.value = `${input.value}-01`;
+                }
+                input.type = 'month';
+                input.removeAttribute('min');
+                input.removeAttribute('max');
+              }
+
+              function maybeDefaultStart(yearly){
+                if(!startInput || startInput.value || !dateInput || !dateInput.value){
+                  return;
+                }
+                startInput.value = yearly ? dateInput.value.slice(0, 4) : dateInput.value.slice(0, 7);
+              }
+
               function update(){
                 const show = sel && sel.value !== 'none';
                 const yearly = sel && sel.value === 'yearly';
                 rangeElems.forEach(e=>{
                   e.style.display = show ? 'block' : 'none';
-                  const inp = e.querySelector('input');
-                  const lbl = e.querySelector('label');
-                  if(inp){
-                    if(yearly){
-                      inp.type = 'number';
-                      inp.min = 2000;
-                      inp.max = 3000;
-                    } else {
-                      inp.type = 'month';
-                      inp.removeAttribute('min');
-                      inp.removeAttribute('max');
-                    }
-                  }
-                  if(lbl){
-                    if(yearly){
-                      lbl.textContent = lbl.textContent.replace('mese/anno', 'anno');
-                    } else {
-                      lbl.textContent = lbl.textContent.replace('anno', 'mese/anno');
-                    }
-                  }
                 });
+                setInputMode(startInput, yearly);
+                setInputMode(endInput, yearly);
+                if(startLabel){
+                  startLabel.textContent = yearly ? 'Da (anno)' : 'Da (mese/anno)';
+                }
+                if(endLabel){
+                  endLabel.textContent = yearly ? 'Fino a (anno)' : 'Fino a (mese/anno)';
+                }
+                if(show){
+                  maybeDefaultStart(yearly);
+                }
               }
               if(sel){
                 sel.addEventListener('change', update);
                 update();
+              }
+              if(dateInput){
+                dateInput.addEventListener('change', ()=>{
+                  if(sel && sel.value !== 'none'){
+                    maybeDefaultStart(sel.value === 'yearly');
+                  }
+                });
               }
             })();
           </script>
@@ -162,31 +210,40 @@
             <label>Net after PM</label>
             <input class="form-control" value="€{{ '%.2f'|format(expense.net_after_pm if expense.net_after_pm is not none else 0.0) }}" disabled>
           </div>
-          {% if expense.recurrence_id or expense._orig_recurrence_id is defined %}
+          {% if expense.recurrence_id %}
           <div class="mb-3">
             <label>Applica modifiche a</label>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single" {% if not (expense.recurrence_id or expense._orig_recurrence_id) %}checked{% endif %}>
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_single" value="single">
               <label class="form-check-label" for="apply_single">Solo questa voce (esci dal cluster)</label>
             </div>
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series" {% if expense.recurrence_id or expense._orig_recurrence_id %}checked{% endif %}>
+              <input class="form-check-input" type="radio" name="apply_to" id="apply_series" value="series" checked>
               <label class="form-check-label" for="apply_series">Tutta la serie ricorrente (modifica tutte le voci)</label>
             </div>
           </div>
           {% endif %}
           <div class="mb-3">
             <label>Allegati</label>
-            <ul>
+            <ul class="list-unstyled mb-0">
               {% for a in attached %}
-                <li><a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a></li>
+                <li class="mb-2">{{ attachment_ui.action_row(a, expense_upload_return, request.session.get('role') == 'admin') }}</li>
               {% else %}
                 <li>Nessun allegato</li>
               {% endfor %}
             </ul>
+            <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+              <input type="file" name="file" id="expense_edit_attachment_file" class="form-control" form="expenseEditAttachmentUploadForm" required multiple>
+              <button class="btn btn-outline-secondary btn-sm" type="submit" form="expenseEditAttachmentUploadForm">Carica allegati</button>
+            </div>
+            <small class="text-muted">Puoi selezionare piu file insieme.</small>
           </div>
           <button class="btn btn-primary" type="submit">Salva</button>
           <a class="btn btn-secondary ms-2" href="/money/expenses">Annulla</a>
+        </form>
+        <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="expenseEditAttachmentUploadForm">
+          <input type="hidden" name="next" value="{{ expense_upload_return }}">
+          <input type="hidden" name="expense_id" value="{{ expense.id }}">
         </form>
         <form method="post" action="/money/expenses/{{ expense.id }}/delete" class="mt-2">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
@@ -196,4 +253,97 @@
     </div>
   </div>
 </div>
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    function setupExpenseAmountSync(formId, grossId, netId, vatId){
+      const form = document.getElementById(formId);
+      const grossInput = document.getElementById(grossId);
+      const netInput = document.getElementById(netId);
+      const vatInput = document.getElementById(vatId);
+      if (!form || !grossInput || !netInput || !vatInput) {
+        return;
+      }
+
+      let lastEditedField = (grossInput.value.trim() === '' && netInput.value.trim() !== '') ? 'net' : 'gross';
+
+      function clearAmountValidity(){
+        grossInput.setCustomValidity('');
+        netInput.setCustomValidity('');
+      }
+
+      function parseAmount(input){
+        const rawValue = input.value.trim();
+        if (rawValue === '') {
+          return null;
+        }
+        const parsedValue = parseFloat(rawValue);
+        return Number.isFinite(parsedValue) ? parsedValue : null;
+      }
+
+      function formatAmount(value){
+        return Number.isFinite(value) ? value.toFixed(2) : '';
+      }
+
+      function resolveVat(){
+        const parsedVat = parseAmount(vatInput);
+        return parsedVat === null ? 0.0 : parsedVat;
+      }
+
+      function syncFromGross(){
+        const gross = parseAmount(grossInput);
+        clearAmountValidity();
+        if (gross === null) {
+          netInput.value = '';
+          return;
+        }
+        const vat = resolveVat();
+        netInput.value = formatAmount(gross * (1 - (vat / 100.0)));
+      }
+
+      function syncFromNet(){
+        const net = parseAmount(netInput);
+        clearAmountValidity();
+        if (net === null) {
+          grossInput.value = '';
+          return;
+        }
+        const vat = resolveVat();
+        const vatFactor = 1 - (vat / 100.0);
+        grossInput.value = vatFactor <= 0 ? '' : formatAmount(net / vatFactor);
+      }
+
+      grossInput.addEventListener('input', function(){
+        lastEditedField = 'gross';
+        syncFromGross();
+      });
+
+      netInput.addEventListener('input', function(){
+        lastEditedField = 'net';
+        syncFromNet();
+      });
+
+      vatInput.addEventListener('input', function(){
+        if (lastEditedField === 'net') {
+          syncFromNet();
+          return;
+        }
+        syncFromGross();
+      });
+
+      form.addEventListener('submit', function(event){
+        clearAmountValidity();
+        if (grossInput.value.trim() !== '' || netInput.value.trim() !== '') {
+          return;
+        }
+        const message = 'Inserisci un importo lordo o netto.';
+        grossInput.setCustomValidity(message);
+        netInput.setCustomValidity(message);
+        grossInput.reportValidity();
+        event.preventDefault();
+      });
+    }
+
+    setupExpenseAmountSync('expenseEditForm', 'expense_edit_gross_amount', 'expense_edit_net_amount', 'expense_edit_vat_percent');
+  });
+</script>
 {% endblock %}

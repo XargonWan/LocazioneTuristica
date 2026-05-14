@@ -1,7 +1,10 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% import 'attachment_macros.html' as attachment_ui %}
 {% set return_url = '/overview?year=' ~ year %}
+{% set attachments_by_income = attachments_by_income if attachments_by_income is defined else {} %}
+{% set attachments_by_expense = attachments_by_expense if attachments_by_expense is defined else {} %}
 <div class="d-flex justify-content-between align-items-center">
   <h1 class="mb-0">
     {# previous year arrow only if there is data for one before #}
@@ -58,12 +61,12 @@
                               {% else %}
                                 {% set net_class = 'net-zero' %}
                               {% endif %}
-                              <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
+                                <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - Risultato del mese: <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
                               <div>
-                                <small class="text-success">Inc netto&nbsp;(-IVA/-PM): €{{ '%.2f'|format(m.income) }}</small>
-                                <small class="text-danger ms-3">Exp (lordo): €{{ '%.2f'|format(m.expense) }}</small>
+                                  <small class="text-success">Incassi netti disponibili: €{{ '%.2f'|format(m.income) }}</small>
+                                  <small class="text-danger ms-3">Spese lorde: €{{ '%.2f'|format(m.expense) }}</small>
                                 {% if m.pm_due and m.pm_due > 0 %}
-                                  <small class="ms-3 text-danger">PM dovuto: €{{ '%.2f'|format(m.pm_due) }}</small>
+                                    <small class="ms-3 text-danger">PM ancora da versare: €{{ '%.2f'|format(m.pm_due) }}</small>
                                 {% endif %}
                               </div>
                            </div>
@@ -89,10 +92,11 @@
                                  </thead>
                                  <tbody>
                                     {% for item in entries_by_month[m.month] %}
+                                        {% set row_attachments = ((attachments_by_income.get(item.id) or []) if item.type == 'income' else ((attachments_by_expense.get(item.id) or []) if attachments_by_expense else [])) %}
                                         <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
                                           <td class="align-middle"><input type="checkbox" class="form-check-input sel-ov d-none" value="{{ item.id }}" data-type="{{ item.type }}"></td>
                                           <td>
-                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}{% if item.type == 'income' and item.cleaning_emoji %} <a href="/cleaning?apartment_id={{ item.apartment_id }}&income_id={{ item.id }}&date={{ item.raw_date }}&next={{ return_url|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ item.cleaning_emoji }}</a>{% endif %}
+                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}{% if item.recurrence_label %} 🗘{% endif %}{% if item.type == 'income' and item.cleaning_emoji %} <a href="/cleaning?apartment_id={{ item.apartment_id }}&income_id={{ item.id }}&date={{ item.raw_date }}&next={{ return_url|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ item.cleaning_emoji }}</a>{% endif %}{% if row_attachments %} <button type="button" class="btn btn-link btn-sm text-decoration-none align-baseline p-0 ms-1" data-bs-toggle="modal" data-bs-target="#ovAttachmentModal-{{ item.type }}-{{ item.id }}" title="Apri allegati" aria-label="Apri allegati">📎</button>{% endif %}
                                           </td>
                                           <td>{{ item.date|format_date }}</td>
                                           <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
@@ -119,24 +123,37 @@
                       </ul>
                     </div>
         <div id="overview-totals" class="mb-3">
-          <div class="d-flex gap-3">
-            <div><strong>Totale Entrate:</strong> <span id="tot-inc">€{{ '%.2f'|format(total_income) }}</span></div>
-            <div><strong>Totale Spese:</strong> <span id="tot-exp">€{{ '%.2f'|format(total_expense) }}</span></div>
-            <div><strong>Versato ai PM:</strong> <span id="tot-pm">€{{ '%.2f'|format(pm_paid_total) }}</span> (<span id="tot-pm-pct">{{ '%.2f'|format(pm_paid_pct) }}%</span>)</div>
+          {% set annual_income_net_total = annual_income_net_total|default(total_income|default(0.0))|float %}
+          {% set annual_expense_total = annual_expense_total|default(total_expense|default(0.0))|float %}
+          {% set annual_pm_paid_total = annual_pm_paid_total|default(pm_paid_total|default(0.0))|float %}
+          {% set annual_pm_due_total = annual_pm_due_total|default(0.0)|float %}
+          {% set grand_total_real = grand_total_real|default(annual_income_net_total - annual_expense_total - annual_pm_paid_total)|float %}
+          {% set grand_total_virtual = grand_total_virtual|default(grand_total_real - annual_pm_due_total)|float %}
+          {% if grand_total_real > 0 %}
+            {% set grand_total_real_class = 'net-positive' %}
+          {% elif grand_total_real < 0 %}
+            {% set grand_total_real_class = 'net-negative' %}
+          {% else %}
+            {% set grand_total_real_class = 'net-zero' %}
+          {% endif %}
+          {% if grand_total_virtual > 0 %}
+            {% set grand_total_virtual_class = 'net-positive' %}
+          {% elif grand_total_virtual < 0 %}
+            {% set grand_total_virtual_class = 'net-negative' %}
+          {% else %}
+            {% set grand_total_virtual_class = 'net-zero' %}
+          {% endif %}
+          <div class="d-flex flex-wrap gap-3 align-items-start">
+            <div><strong title="Entrate nette dell'anno, al netto dell'IVA ma prima dei versamenti al PM.">Entrate nette:</strong> <span>€{{ '%.2f'|format(annual_income_net_total) }}</span></div>
+            <div><strong title="Spese registrate nell'anno, esclusi i pagamenti fatti ai PM che sono mostrati a parte.">Spese:</strong> <span>€{{ '%.2f'|format(annual_expense_total) }}</span></div>
+            <div><strong title="Quanto hai effettivamente gia versato ai PM nell'anno tramite spese associate a un PM.">PM gia versato:</strong> <span>€{{ '%.2f'|format(annual_pm_paid_total) }}</span></div>
+            {% if annual_pm_due_total > 0 %}
+              <div><strong title="Quota PM maturata sulle entrate dell'anno ma non ancora versata.">PM ancora da versare:</strong> <span>€{{ '%.2f'|format(annual_pm_due_total) }}</span></div>
+            {% endif %}
+            <div class="w-100"></div>
+            <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati: entrate nette meno spese gia sostenute meno PM gia dato. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span class="net-total {{ grand_total_real_class }}">€{{ '%.2f'|format(grand_total_real) }}</span></div>
+            <div><strong class="text-decoration-underline" title="Saldo virtuale ipotizzando di aver gia versato tutto il PM ancora dovuto.">Gran totale virtuale:</strong> <span class="net-total {{ grand_total_virtual_class }}">€{{ '%.2f'|format(grand_total_virtual) }}</span></div>
           </div>
-        </div>
-        <div class="table-responsive">
-          <table id="overview-table" class="table table-sm table-borderless">
-            <thead>
-              <tr>
-                <th>Mese</th>
-                <th class="text-end">Inc</th>
-                <th class="text-end">Exp</th>
-                <th class="text-end">Net</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -146,17 +163,43 @@
         <div id="overview-modals">
           {% for m in months %}
             {% for item in entries_by_month[m.month] %}
+              {% set row_attachments = ((attachments_by_income.get(item.id) or []) if item.type == 'income' else ((attachments_by_expense.get(item.id) or []) if attachments_by_expense else [])) %}
+              {% if row_attachments %}
+                <div class="modal fade" id="ovAttachmentModal-{{ item.type }}-{{ item.id }}" tabindex="-1" aria-labelledby="ovAttachmentModalLabel-{{ item.type }}-{{ item.id }}" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="ovAttachmentModalLabel-{{ item.type }}-{{ item.id }}">Allegati {{ item.notes if item.notes else ('#' ~ item.id) }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                      </div>
+                      <div class="modal-body">
+                        <ul class="list-unstyled mb-0">
+                          {% for attachment in row_attachments %}
+                            <li class="mb-2">{{ attachment_ui.action_row(attachment, return_url, False) }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                      <div class="modal-footer">
+                        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Chiudi</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
               {% if request.session.get('role') == 'admin' %}
                 {% if item.type == 'expense' %}
                 <div class="modal fade" id="expenseModal-{{ item.id }}" tabindex="-1" aria-labelledby="expenseModalLabel-{{ item.id }}" aria-hidden="true">
                   <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                       <div class="modal-header">
-                        <h5 class="modal-title">Dettagli Spesa {{ item.notes if item.notes else ('#' ~ item.id) }}</h5>
+                        <h5 class="modal-title">Dettagli Spesa {{ item.notes if item.notes else ('#' ~ item.id) }}{% if item.recurrence_label %} 🗘{% endif %}</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
                       </div>
                             <div class="modal-body">
                               <p><strong>Data:</strong> {{ item.date|format_date }}</p>
+                              {% if item.recurrence_label %}
+                                <p><strong>Ricorrenza:</strong> {{ item.recurrence_label }}, da {{ item.recurrence_start|format_date }}{% if item.recurrence_end %} a {{ item.recurrence_end|format_date }}{% else %}, senza scadenza (calcolata fino all'anno corrente){% endif %}</p>
+                              {% endif %}
                               <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
                               {% if item.type == 'income' and item.net_amount is defined %}
                                 <p><strong>Importo netto:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
@@ -201,11 +244,14 @@
                   <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                       <div class="modal-header">
-                        <h5 class="modal-title">Dettagli Entrata {{ item.notes if item.notes else ('#' ~ item.id) }}</h5>
+                        <h5 class="modal-title">Dettagli Entrata {{ item.notes if item.notes else ('#' ~ item.id) }}{% if item.recurrence_label %} 🗘{% endif %}</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
                       </div>
                       <div class="modal-body">
                         <p><strong>Data:</strong> {{ item.date|format_date }}</p>
+                        {% if item.recurrence_label %}
+                          <p><strong>Ricorrenza:</strong> {{ item.recurrence_label }}, da {{ item.recurrence_start|format_date }}{% if item.recurrence_end %} a {{ item.recurrence_end|format_date }}{% else %}, senza scadenza (calcolata fino all'anno corrente){% endif %}</p>
+                        {% endif %}
                         <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
                                 {% if item.type == 'income' and item.net_amount is defined %}
                                   <p><strong>Importo netto:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>

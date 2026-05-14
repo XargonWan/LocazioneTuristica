@@ -1,11 +1,18 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<h1>Spese</h1>
+{% import 'attachment_macros.html' as attachment_ui %}
+{% set create_mode = create_mode if create_mode is defined else False %}
+{% set expense_upload_return = expense_upload_return if expense_upload_return is defined else '/money/expenses' %}
+{% set expense_create_url = expense_create_url if expense_create_url is defined else '/money/expenses?mode=create' %}
+{% set expense_list_return = next if next is defined and next else '/money/expenses' %}
+<h1>{{ 'Aggiungi spesa' if create_mode else 'Spese' }}</h1>
 <div class="card">
   <div class="card-body">
+    {% if not create_mode %}
     <div class="d-flex justify-content-between mb-2">
       <div>
+        <a class="btn btn-success btn-sm" href="{{ expense_create_url }}">Nuova spesa</a>
         {% if expenses and expenses|length > 0 and not next %}
         <button id="editModeToggleExp" class="btn btn-primary btn-sm" onclick="toggleEditMode('expenses')">Modifica...</button>
         {% endif %}
@@ -16,7 +23,8 @@
         <label id="selectAllExpensesLabel" class="me-2 d-none">Seleziona tutto <input type="checkbox" id="selectAllExpenses" class="form-check-input ms-1"></label>
       </div>
     </div>
-    <form method="post" action="/money/expenses/add">
+    {% endif %}
+    <form method="post" action="/money/expenses/add" id="expenseAddForm">
       <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
         <label>Data</label>
@@ -24,15 +32,24 @@
       </div>
       <div class="mb-3">
         <label>Importo lordo</label>
-        <input type="number" name="gross_amount" step="0.01" class="form-control" required>
+        <input type="number" name="gross_amount" step="0.01" class="form-control" id="expense_gross_amount">
       </div>
       <div class="mb-3 form-check">
         <input type="checkbox" class="form-check-input" id="expense_is_cleaning" name="is_cleaning" value="1">
         <label class="form-check-label" for="expense_is_cleaning">Spesa di pulizia</label>
       </div>
+      <input type="hidden" name="associated_company_id" id="cleaning_company_id" value="">
+      <div class="mb-3 d-none" id="cleaningCompanyControls">
+        <label class="form-label d-block">Ditta di pulizie</label>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="selectCleaningCompanyBtn">Seleziona ditta di pulizie</button>
+          <span class="text-muted" id="selectedCleaningCompanyLabel">Nessuna ditta selezionata</span>
+        </div>
+      </div>
       <div class="mb-3">
         <label>Importo netto</label>
-        <input type="number" name="net_amount" step="0.01" class="form-control" value="" placeholder="Lascia vuoto per calcolo automatico">
+        <input type="number" name="net_amount" step="0.01" class="form-control" id="expense_net_amount" value="" placeholder="Calcolato automaticamente se inserisci il lordo">
+        <small class="text-muted">Puoi inserire il lordo o il netto: l'altro importo viene calcolato automaticamente in base all'IVA.</small>
       </div>
       <div class="mb-3">
         <label>Appartamento</label>
@@ -50,6 +67,11 @@
           <option value="{{ a.id }}">{{ a.filename }} ({{ a.size }} bytes)</option>
           {% endfor %}
         </select>
+        <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+          <input type="file" name="file" id="expense_add_attachment_file" class="form-control" form="expenseAddAttachmentUploadForm" multiple required>
+          <button class="btn btn-outline-secondary" type="submit" form="expenseAddAttachmentUploadForm">Carica nuovo allegato</button>
+        </div>
+        <small class="text-muted">Qui compaiono solo i documenti non ancora associati. Per l'archivio completo usa Documenti nel menu.</small>
       </div>
       <div class="mb-3">
         <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm"> Pagamento a (PM)</label>
@@ -74,7 +96,7 @@
       </script>
       <div class="mb-3">
         <label>IVA (%)</label>
-        <input type="number" name="vat_percent" step="0.01" class="form-control" value="22.0">
+        <input type="number" name="vat_percent" step="0.01" class="form-control" id="expense_vat_percent" value="22.0">
       </div>
       {# percentuale PM stripped from expenses #}
       <div class="mb-3">
@@ -92,39 +114,72 @@
       <div class="mb-3 recurrence-range">
         <label>Fino a (mese/anno)</label>
         <input type="month" name="recurrence_end" class="form-control">
+        <small class="text-muted">Vuoto = ricorrenza senza scadenza, calcolata fino a dicembre dell'anno corrente.</small>
       </div>
       <script>
         (function(){
           const sel = document.querySelector('select[name="recurrence"]');
+          const dateInput = document.querySelector('input[name="date"]');
+          const startInput = document.querySelector('input[name="recurrence_start"]');
+          const endInput = document.querySelector('input[name="recurrence_end"]');
           const rangeElems = document.querySelectorAll('.recurrence-range');
+          const startLabel = startInput ? startInput.closest('.mb-3').querySelector('label') : null;
+          const endLabel = endInput ? endInput.closest('.mb-3').querySelector('label') : null;
+
+          function setInputMode(input, yearly){
+            if(!input){
+              return;
+            }
+            if(yearly){
+              if(input.value && input.value.includes('-')){
+                input.value = input.value.slice(0, 4);
+              }
+              input.type = 'number';
+              input.min = 2000;
+              input.max = 3000;
+              return;
+            }
+            if(input.value && /^\d{4}$/.test(input.value)){
+              input.value = `${input.value}-01`;
+            }
+            input.type = 'month';
+            input.removeAttribute('min');
+            input.removeAttribute('max');
+          }
+
+          function maybeDefaultStart(yearly){
+            if(!startInput || startInput.value || !dateInput || !dateInput.value){
+              return;
+            }
+            startInput.value = yearly ? dateInput.value.slice(0, 4) : dateInput.value.slice(0, 7);
+          }
+
           function update(){
             const show = sel && sel.value !== 'none';
             const yearly = sel && sel.value === 'yearly';
             rangeElems.forEach(e=>{
               e.style.display = show ? 'block' : 'none';
-              const inp = e.querySelector('input');
-              const lbl = e.querySelector('label');
-              if(inp){
-                if(yearly){
-                  inp.type = 'number';
-                  inp.min = 2000;
-                  inp.max = 3000;
-                } else {
-                  inp.type = 'month';
-                  inp.removeAttribute('min');
-                  inp.removeAttribute('max');
-                }
-              }
-              if(lbl){
-                if(yearly){
-                  lbl.textContent = lbl.textContent.replace('mese/anno', 'anno');
-                } else {
-                  lbl.textContent = lbl.textContent.replace('anno', 'mese/anno');
-                }
+            });
+            setInputMode(startInput, yearly);
+            setInputMode(endInput, yearly);
+            if(startLabel){
+              startLabel.textContent = yearly ? 'Da (anno)' : 'Da (mese/anno)';
+            }
+            if(endLabel){
+              endLabel.textContent = yearly ? 'Fino a (anno)' : 'Fino a (mese/anno)';
+            }
+            if(show){
+              maybeDefaultStart(yearly);
+            }
+          }
+          if(sel){ sel.addEventListener('change', update); update(); }
+          if(dateInput){
+            dateInput.addEventListener('change', ()=>{
+              if(sel && sel.value !== 'none'){
+                maybeDefaultStart(sel.value === 'yearly');
               }
             });
           }
-          if(sel){ sel.addEventListener('change', update); update(); }
         })();
       </script>
       <div class="mb-3">
@@ -136,15 +191,156 @@
         <button class="btn btn-primary">Aggiungi spesa</button>
       </div>
     </form>
+    <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="expenseAddAttachmentUploadForm">
+      <input type="hidden" name="next" value="{{ expense_upload_return }}">
+    </form>
+    <div class="modal fade" id="cleaningCompanyModal" tabindex="-1" aria-labelledby="cleaningCompanyModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="cleaningCompanyModalLabel">Ditta di pulizie</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+          </div>
+          <div class="modal-body">
+            {% if cleaning_companies %}
+            <label for="cleaning_company_modal_select" class="form-label">Seleziona la ditta da associare alla spesa</label>
+            <select class="form-control" id="cleaning_company_modal_select">
+              <option value="">---</option>
+              {% for company in cleaning_companies %}
+              <option value="{{ company.id }}">{{ company.company_name }}</option>
+              {% endfor %}
+            </select>
+            <div class="invalid-feedback">Seleziona una ditta di pulizie.</div>
+            {% else %}
+            <div class="alert alert-warning mb-0">
+              Nessuna ditta di pulizie configurata. Aggiungine una in <a href="/anagrafiche">Anagrafiche</a>.
+            </div>
+            {% endif %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+            <button type="button" class="btn btn-primary" id="saveCleaningCompanySelection" {% if not cleaning_companies %}disabled{% endif %}>Conferma</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function(){
+        const cleaningCheckbox = document.getElementById('expense_is_cleaning');
+        const cleaningCompanyInput = document.getElementById('cleaning_company_id');
+        const cleaningControls = document.getElementById('cleaningCompanyControls');
+        const cleaningLabel = document.getElementById('selectedCleaningCompanyLabel');
+        const openCleaningCompanyBtn = document.getElementById('selectCleaningCompanyBtn');
+        const modalEl = document.getElementById('cleaningCompanyModal');
+        const modalSelect = document.getElementById('cleaning_company_modal_select');
+        const saveBtn = document.getElementById('saveCleaningCompanySelection');
+
+        if(!cleaningCheckbox || !cleaningCompanyInput || !cleaningControls || !cleaningLabel || !openCleaningCompanyBtn || !modalEl){
+          return;
+        }
+
+        function getCleaningCompanyModal(){
+          if(!window.bootstrap){
+            return null;
+          }
+          return bootstrap.Modal.getOrCreateInstance(modalEl);
+        }
+
+        function getSelectedCompanyOption(){
+          if(!modalSelect || !cleaningCompanyInput.value){
+            return null;
+          }
+          return Array.from(modalSelect.options).find((option) => option.value === cleaningCompanyInput.value) || null;
+        }
+
+        function updateCleaningCompanyUI(){
+          if(!cleaningCheckbox.checked){
+            cleaningControls.classList.add('d-none');
+            cleaningLabel.textContent = '';
+            return;
+          }
+
+          cleaningControls.classList.remove('d-none');
+          const selectedOption = getSelectedCompanyOption();
+          cleaningLabel.textContent = selectedOption
+            ? `Ditta selezionata: ${selectedOption.textContent.trim()}`
+            : 'Nessuna ditta di pulizie selezionata';
+        }
+
+        function openCleaningCompanyModal(){
+          if(modalSelect){
+            modalSelect.value = cleaningCompanyInput.value || '';
+            modalSelect.classList.remove('is-invalid');
+          }
+
+          const modal = getCleaningCompanyModal();
+          if(modal){
+            modal.show();
+          }
+        }
+
+        cleaningCheckbox.addEventListener('change', () => {
+          if(cleaningCheckbox.checked){
+            updateCleaningCompanyUI();
+            openCleaningCompanyModal();
+            return;
+          }
+
+          cleaningCompanyInput.value = '';
+          if(modalSelect){
+            modalSelect.value = '';
+            modalSelect.classList.remove('is-invalid');
+          }
+          updateCleaningCompanyUI();
+        });
+
+        openCleaningCompanyBtn.addEventListener('click', openCleaningCompanyModal);
+
+        if(saveBtn && modalSelect){
+          saveBtn.addEventListener('click', () => {
+            if(!modalSelect.value){
+              modalSelect.classList.add('is-invalid');
+              return;
+            }
+
+            modalSelect.classList.remove('is-invalid');
+            cleaningCompanyInput.value = modalSelect.value;
+            updateCleaningCompanyUI();
+
+            const modal = getCleaningCompanyModal();
+            if(modal){
+              modal.hide();
+            }
+          });
+        }
+
+        modalEl.addEventListener('hidden.bs.modal', () => {
+          if(modalSelect){
+            modalSelect.classList.remove('is-invalid');
+            modalSelect.value = cleaningCompanyInput.value || '';
+          }
+
+          if(cleaningCheckbox.checked && !cleaningCompanyInput.value){
+            cleaningCheckbox.checked = false;
+          }
+
+          updateCleaningCompanyUI();
+        });
+
+        updateCleaningCompanyUI();
+      })();
+    </script>
+    {% if not create_mode %}
         <ul class="list-group mt-3">
       {% for e in expenses %}
+          {% set row_attachments = ((attachments_by_expense.get(e.id) or []) if attachments_by_expense else []) %}
       <li class="list-group-item d-flex justify-content-between align-items-center">
         <div class="form-check me-3 d-none multi-select-checkbox-exp">
           <input class="form-check-input sel-expense" type="checkbox" value="{{ e.id }}" id="selExp-{{ e.id }}">
         </div>
         <div>
             <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }} ) - PM: €{{ '%.2f'|format(e.pm_amount if e.pm_amount is not none else 0.0) }} - Netto dopo PM: €{{ '%.2f'|format(e.net_after_pm if e.net_after_pm is not none else 0.0) }} </div>
-          <small class="text-muted">{{ e.notes }}</small>
+              <small class="text-muted">{{ e.notes or ('#' ~ e.id) }}{% if e.recurrence %} 🗘{% endif %}{% if row_attachments %} <button type="button" class="btn btn-link btn-sm text-decoration-none align-baseline p-0 ms-1" data-bs-toggle="modal" data-bs-target="#expenseAttachmentsModal-{{ e.id }}" title="Apri allegati" aria-label="Apri allegati">📎</button>{% endif %}</small>
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}
@@ -152,19 +348,42 @@
           {% endif %}
         </span>
       </li>
+                {% if row_attachments %}
+                <div class="modal fade" id="expenseAttachmentsModal-{{ e.id }}" tabindex="-1" aria-labelledby="expenseAttachmentsLabel-{{ e.id }}" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="expenseAttachmentsLabel-{{ e.id }}">Allegati Spesa {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                      </div>
+                      <div class="modal-body">
+                        <ul class="list-unstyled mb-0">
+                          {% for a in row_attachments %}
+                            <li class="mb-2">{{ attachment_ui.action_row(a, expense_list_return, False) }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {% endif %}
             <!-- Modal for expense details -->
             {% if request.session.get('role') == 'admin' %}
             <div class="modal fade" id="expenseModal-{{ e.id }}" tabindex="-1" aria-labelledby="expenseModalLabel-{{ e.id }}" aria-hidden="true">
               <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                   <div class="modal-header">
-                    <h5 class="modal-title" id="expenseModalLabel-{{ e.id }}">Dettagli Spesa {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                    <h5 class="modal-title" id="expenseModalLabel-{{ e.id }}">Dettagli Spesa {{ e.notes if e.notes else ('#' ~ e.id) }}{% if e.recurrence %} 🗘{% endif %}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
                   </div>
                   <div class="modal-body">
                     <p><strong>Data:</strong> {{ e.date|format_date }}</p>
                     {% if e.recurrence %}
-                      <p><strong>Ricorrenza:</strong> da {{ e.recurrence.start_date|format_date }}{% if e.recurrence.end_date %} a {{ e.recurrence.end_date|format_date }}{% endif %}</p>
+                      {% set recurrence_label = 'Mensile' if e.recurrence.type == 'monthly' else 'Annuale' if e.recurrence.type == 'yearly' else 'Ricorrente' %}
+                      <p><strong>Ricorrenza:</strong> {{ recurrence_label }}, da {{ e.recurrence.start_date|format_date }}{% if e.recurrence.end_date %} a {{ e.recurrence.end_date|format_date }}{% else %}, senza scadenza (calcolata fino all'anno corrente){% endif %}</p>
                     {% endif %}
                     <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(e.gross_amount) }}</p>
                     <p><strong>IVA:</strong> {{ e.vat_percent }}%</p>
@@ -179,9 +398,9 @@
                     <p><strong>Associata a (Ditta):</strong> {{ e.associated_company.company_name if e.associated_company else '-' }}</p>
                     <p><strong>Note:</strong> {{ e.notes or '-' }}</p>
                     <p><strong>Allegati:</strong></p>
-                    <ul>
-                      {% for a in (attachments_by_expense.get(e.id) if attachments_by_expense else []) %}
-                        <li><a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a></li>
+                    <ul class="list-unstyled mb-0">
+                      {% for a in ((attachments_by_expense.get(e.id) or []) if attachments_by_expense else []) %}
+                        <li class="mb-2">{{ attachment_ui.action_row(a, expense_list_return, request.session.get('role') == 'admin') }}</li>
                       {% else %}
                         <li>Nessun allegato</li>
                       {% endfor %}
@@ -233,11 +452,14 @@
                     </div>
                     <div class="mb-2">
                       <label>Importo netto</label>
-                      <input type="number" name="net_amount" step="0.01" class="form-control">
+                      <input type="number" name="net_amount" step="0.01" class="form-control" id="bulk_expense_net_amount">
                     </div>
                     <div class="mb-2">
                       <label>Importo lordo</label>
-                      <input type="number" name="gross_amount" step="0.01" class="form-control">
+                      <input type="number" name="gross_amount" step="0.01" class="form-control" id="bulk_expense_gross_amount">
+                    </div>
+                    <div class="mb-2">
+                      <small class="text-muted">Puoi inserire il lordo o il netto: l'altro importo viene calcolato automaticamente in base all'IVA impostata per il bulk.</small>
                     </div>
                     <div class="mb-2">
                       <label>Appartamento</label>
@@ -250,7 +472,7 @@
                     </div>
                     <div class="mb-2">
                       <label>IVA (%)</label>
-                      <input type="number" name="vat_percent" step="0.01" class="form-control">
+                      <input type="number" name="vat_percent" step="0.01" class="form-control" id="bulk_expense_vat_percent">
                     </div>
                     <div class="mb-2">
                       <label>PM</label>
@@ -313,6 +535,7 @@
       <li class="list-group-item">Nessuna spesa</li>
       {% endfor %}
     </ul>
+    {% endif %}
   </div>
 </div>
       {# Render delete confirmation modals outside the main flow to avoid nested modal/backdrop issues #}
@@ -350,20 +573,100 @@
       {% endfor %}
 <script>
   document.addEventListener('DOMContentLoaded', function(){
-    const grossInput = document.querySelector('input[name="gross_amount"]');
-    const vatInput = document.querySelector('input[name="vat_percent"]');
-    const netInput = document.querySelector('input[name="net_amount"]');
-    // Auto-calc net when gross or vat change if net input is empty
-    function calcNet(){
-      if (!grossInput || !vatInput || !netInput) return;
-      if (netInput.value && netInput.value.trim() !== '') return; // user provided net
-      const gross = parseFloat(grossInput.value) || 0.0;
-      const vat = parseFloat(vatInput.value) || 0.0;
-      const net = gross * (1 - (vat / 100.0));
-      netInput.value = net ? net.toFixed(2) : '';
+    function setupExpenseAmountSync(formId, grossId, netId, vatId, options){
+      const form = document.getElementById(formId);
+      const grossInput = document.getElementById(grossId);
+      const netInput = document.getElementById(netId);
+      const vatInput = document.getElementById(vatId);
+      const settings = Object.assign({ requireAnyAmount: true }, options || {});
+      if (!form || !grossInput || !netInput || !vatInput) {
+        return;
+      }
+
+      let lastEditedField = (grossInput.value.trim() === '' && netInput.value.trim() !== '') ? 'net' : 'gross';
+
+      function clearAmountValidity(){
+        grossInput.setCustomValidity('');
+        netInput.setCustomValidity('');
+      }
+
+      function parseAmount(input){
+        const rawValue = input.value.trim();
+        if (rawValue === '') {
+          return null;
+        }
+        const parsedValue = parseFloat(rawValue);
+        return Number.isFinite(parsedValue) ? parsedValue : null;
+      }
+
+      function formatAmount(value){
+        return Number.isFinite(value) ? value.toFixed(2) : '';
+      }
+
+      function resolveVat(){
+        const parsedVat = parseAmount(vatInput);
+        return parsedVat === null ? 0.0 : parsedVat;
+      }
+
+      function syncFromGross(){
+        const gross = parseAmount(grossInput);
+        clearAmountValidity();
+        if (gross === null) {
+          netInput.value = '';
+          return;
+        }
+        const vat = resolveVat();
+        netInput.value = formatAmount(gross * (1 - (vat / 100.0)));
+      }
+
+      function syncFromNet(){
+        const net = parseAmount(netInput);
+        clearAmountValidity();
+        if (net === null) {
+          grossInput.value = '';
+          return;
+        }
+        const vat = resolveVat();
+        const vatFactor = 1 - (vat / 100.0);
+        grossInput.value = vatFactor <= 0 ? '' : formatAmount(net / vatFactor);
+      }
+
+      grossInput.addEventListener('input', function(){
+        lastEditedField = 'gross';
+        syncFromGross();
+      });
+
+      netInput.addEventListener('input', function(){
+        lastEditedField = 'net';
+        syncFromNet();
+      });
+
+      vatInput.addEventListener('input', function(){
+        if (lastEditedField === 'net') {
+          syncFromNet();
+          return;
+        }
+        syncFromGross();
+      });
+
+      form.addEventListener('submit', function(event){
+        clearAmountValidity();
+        if (!settings.requireAnyAmount) {
+          return;
+        }
+        if (grossInput.value.trim() !== '' || netInput.value.trim() !== '') {
+          return;
+        }
+        const message = 'Inserisci un importo lordo o netto.';
+        grossInput.setCustomValidity(message);
+        netInput.setCustomValidity(message);
+        grossInput.reportValidity();
+        event.preventDefault();
+      });
     }
-    if (grossInput) grossInput.addEventListener('input', calcNet);
-    if (vatInput) vatInput.addEventListener('input', calcNet);
+
+    setupExpenseAmountSync('expenseAddForm', 'expense_gross_amount', 'expense_net_amount', 'expense_vat_percent');
+    setupExpenseAmountSync('bulkEditExpenseForm', 'bulk_expense_gross_amount', 'bulk_expense_net_amount', 'bulk_expense_vat_percent', { requireAnyAmount: false });
   });
 </script>
 <script>
@@ -376,6 +679,10 @@ document.addEventListener('DOMContentLoaded', function(){
   const bulkEditIds = document.getElementById('bulkEditExpenseIds');
   const bulkDeleteIds = document.getElementById('bulkDeleteExpenseIds');
   const bulkEditConfirm = document.getElementById('bulkEditExpConfirm');
+
+  if (!bulkEditBtn || !bulkDeleteBtn || !selectAll || !bulkEditCount || !bulkDeleteCount || !bulkEditIds || !bulkDeleteIds || !bulkEditConfirm) {
+    return;
+  }
 
   function updateSelectionUI(show){
     document.querySelectorAll('.multi-select-checkbox-exp').forEach(el => el.classList.toggle('d-none', !show));

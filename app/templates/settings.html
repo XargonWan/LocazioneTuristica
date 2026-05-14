@@ -2,9 +2,21 @@
 
 {% block content %}
 {% set return_url = next if next is defined and next else '/settings' %}
+{% set settings_status = request.query_params.get('settings') %}
+{% set backup_status = request.query_params.get('backup') %}
 <h1>Impostazioni</h1>
 <div class="card">
   <div class="card-body">
+      {% if settings_status == 'saved' %}
+      <div class="alert alert-success">Impostazione salvata.</div>
+      {% elif settings_status == 'invalid_backup_retention' %}
+      <div class="alert alert-danger">La retention dei backup automatici deve essere un intero positivo.</div>
+      {% endif %}
+      {% if backup_status == 'manual_success' %}
+      <div class="alert alert-success">Backup manuale creato: {{ request.query_params.get('archive') }}.</div>
+      {% elif backup_status == 'manual_error' %}
+      <div class="alert alert-danger">Creazione del backup manuale non riuscita.</div>
+      {% endif %}
       <p>Impostazioni dell'app: IVA, tema, limiti upload, ecc.</p>
       <form method="post" action="/settings/update" class="mb-3">
         <div class="d-flex">
@@ -21,6 +33,21 @@
           <input class="form-control me-2" name="value" value="{{ (settings | selectattr('key', 'equalto', 'max_upload_size') | list | first).value if settings | selectattr('key', 'equalto', 'max_upload_size') | list else '10485760' }}">
           <button class="btn btn-primary">Salva dimensione upload</button>
         </div>
+      </form>
+      <form method="post" action="/settings/update" class="mb-3">
+        <input type="hidden" name="key" value="backup_auto_retention">
+        <input type="hidden" name="next" value="{{ return_url }}">
+        <label class="form-label" for="backup-auto-retention">Retention backup automatici</label>
+        <div class="d-flex">
+          <input id="backup-auto-retention" class="form-control me-2" name="value" value="{{ (settings | selectattr('key', 'equalto', 'backup_auto_retention') | list | first).value if settings | selectattr('key', 'equalto', 'backup_auto_retention') | list else '7' }}">
+          <button class="btn btn-primary">Salva retention backup</button>
+        </div>
+        <div class="form-text">Numero massimo di backup automatici mantenuti. I backup manuali non vengono ruotati.</div>
+      </form>
+      <form method="post" action="/settings/backup/manual" class="mb-3">
+        <input type="hidden" name="next" value="{{ return_url }}">
+        <button class="btn btn-outline-primary">Crea backup manuale completo</button>
+        <div class="form-text">Il backup manuale include database e allegati e non viene cancellato dalla rotation automatica.</div>
       </form>
     <ul class="list-group mt-2">
       {% for s in settings %}

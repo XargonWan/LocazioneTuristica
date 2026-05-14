@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db import SessionLocal
 from app.models import Apartment, Expense, Income, PropertyManager, Recurrence, User
+from app.utils import expand_open_recurrences_to_current_year
 from app.routers.auth import pwd_context
 
 pytestmark = pytest.mark.db_backup
@@ -51,6 +52,40 @@ def test_income_edit_creates_recurrence():
         occs = db.query(Income).filter(Income.recurrence_id == inc.recurrence_id).all()
         # should at least have original + 1 more record
         assert len(occs) >= 2
+    finally:
+        db.close()
+
+
+def test_income_edit_creates_open_recurrence_until_current_year(monkeypatch):
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        inc = Income(apartment_id=None, platform_id=None, date='2025-01-01', gross_amount=100.0, vat_percent=22.0, net_amount=78.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=78.0, notes='open-income')
+        db.add(inc)
+        db.commit()
+        from app.routers import money as money_router
+
+        monkeypatch.setattr(money_router, '_current_year', lambda: 2026)
+        client = TestClient(app)
+        r = client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        assert r.status_code in (200, 303)
+        r = client.post(
+            f'/money/incomes/{inc.id}/edit',
+            data={
+                'gross_amount': '100.0',
+                'vat_percent': '22.0',
+                'pm_percent': '0.0',
+                'date': '2025-01-01',
+                'recurrence': 'monthly',
+                'notes': 'open-income',
+            }
+        )
+        assert r.status_code in (200, 303)
+        db.refresh(inc)
+        occs = db.query(Income).filter(Income.recurrence_id == inc.recurrence_id).order_by(Income.date).all()
+        assert len(occs) == 24
+        assert occs[0].date == '2025-01-01'
+        assert occs[-1].date == '2026-12-01'
     finally:
         db.close()
 
@@ -120,14 +155,14 @@ def test_edit_form_prefills_recurrence():
         resp = client.get(f'/money/expenses/{e.id}/edit')
         assert resp.status_code in (200, 303)
         text = resp.text
-        assert 'value="monthly"' in text
+        assert '<option value="monthly" selected>' in text
         assert 'name="recurrence_start"' in text and '2025-01' in text
         assert 'name="recurrence_end"' in text and '2025-06' in text
     finally:
         db.close()
 
 
-def test_edit_form_infers_recurring_when_detached():
+def test_edit_form_does_not_infer_recurring_from_date_overlap():
     db = SessionLocal()
     try:
         admin = create_admin(db)
@@ -143,10 +178,81 @@ def test_edit_form_infers_recurring_when_detached():
         resp = client.get(f'/money/expenses/{e.id}/edit')
         assert resp.status_code in (200, 303)
         text = resp.text
-        # although recurrence_id is None, form should show monthly and range
-        assert 'value="monthly"' in text
-        assert '2025-01' in text
-        assert '2025-06' in text
+        assert 'name="orig_recurrence_id" value=""' in text
+        assert '<option value="none" selected>' in text
+        assert 'Falla rientrare nella serie' not in text
+    finally:
+        db.close()
+
+
+def test_detached_expense_tracks_origin_and_can_rejoin_without_rewriting_series():
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        r = Recurrence(type='monthly', start_date='2025-01-01', end_date='2025-03-01')
+        db.add(r)
+        db.commit()
+        jan = Expense(apartment_id=None, date='2025-01-01', gross_amount=40.0, vat_percent=22.0, net_amount=31.2, pm_percent=0.0, pm_amount=0.0, net_after_pm=31.2, recurrence_id=r.id, notes='serie')
+        feb = Expense(apartment_id=None, date='2025-02-01', gross_amount=40.0, vat_percent=22.0, net_amount=31.2, pm_percent=0.0, pm_amount=0.0, net_after_pm=31.2, recurrence_id=r.id, notes='serie')
+        mar = Expense(apartment_id=None, date='2025-03-01', gross_amount=40.0, vat_percent=22.0, net_amount=31.2, pm_percent=0.0, pm_amount=0.0, net_after_pm=31.2, recurrence_id=r.id, notes='serie')
+        db.add_all([jan, feb, mar])
+        db.commit()
+
+        client = TestClient(app)
+        client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        resp = client.post(
+            f'/money/expenses/{feb.id}/edit',
+            data={
+                'gross_amount': '99.0',
+                'net_amount': '89.1',
+                'vat_percent': '10.0',
+                'pm_percent': '0.0',
+                'date': '2025-02-19',
+                'recurrence': 'none',
+                'apply_to': 'single',
+                'notes': 'fuori-serie',
+            },
+        )
+
+        assert resp.status_code in (200, 303)
+        db.refresh(feb)
+        assert feb.recurrence_id is None
+        assert feb.orig_recurrence_id == r.id
+        assert feb.date == '2025-02-19'
+        assert float(feb.gross_amount) == 99.0
+        assert float(feb.net_amount) == 89.1
+        assert float(feb.vat_percent) == 10.0
+        assert feb.notes == 'fuori-serie'
+
+        resp = client.post(
+            f'/money/expenses/{feb.id}/edit',
+            data={
+                'gross_amount': '99.0',
+                'net_amount': '89.1',
+                'vat_percent': '10.0',
+                'pm_percent': '0.0',
+                'date': '2025-02-19',
+                'recurrence': 'none',
+                'apply_to': 'single',
+                'orig_recurrence_id': str(r.id),
+                'rejoin_recurrence': '1',
+                'notes': 'fuori-serie',
+            },
+        )
+
+        assert resp.status_code in (200, 303)
+        db.refresh(feb)
+        assert feb.recurrence_id == r.id
+        assert feb.orig_recurrence_id is None
+        assert feb.date == '2025-02-01'
+        assert float(feb.gross_amount) == 40.0
+        assert float(feb.net_amount) == 31.2
+        assert float(feb.vat_percent) == 22.0
+        assert feb.notes == 'serie'
+
+        linked = db.query(Expense).filter(Expense.recurrence_id == r.id).order_by(Expense.date).all()
+        assert [entry.date for entry in linked] == ['2025-01-01', '2025-02-01', '2025-03-01']
+        assert all(entry.notes == 'serie' for entry in linked)
     finally:
         db.close()
 
@@ -194,6 +300,70 @@ def test_expense_edit_creates_recurrence():
     finally:
         db.close()
 
+
+def test_expense_edit_creates_open_recurrence_until_current_year(monkeypatch):
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        exp = Expense(apartment_id=None, date='2025-01-01', gross_amount=80.0, vat_percent=22.0, net_amount=62.4, pm_percent=0.0, pm_amount=0.0, net_after_pm=62.4, notes='open-expense')
+        db.add(exp)
+        db.commit()
+        from app.routers import money as money_router
+
+        monkeypatch.setattr(money_router, '_current_year', lambda: 2026)
+        client = TestClient(app)
+        r = client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        assert r.status_code in (200, 303)
+        r = client.post(
+            f'/money/expenses/{exp.id}/edit',
+            data={
+                'gross_amount': '80.0',
+                'net_amount': '62.4',
+                'vat_percent': '22.0',
+                'pm_percent': '0.0',
+                'date': '2025-01-01',
+                'recurrence': 'monthly',
+                'notes': 'open-expense',
+            }
+        )
+        assert r.status_code in (200, 303)
+        db.refresh(exp)
+        occs = db.query(Expense).filter(Expense.recurrence_id == exp.recurrence_id).order_by(Expense.date).all()
+        assert len(occs) == 24
+        assert occs[0].date == '2025-01-01'
+        assert occs[-1].date == '2026-12-01'
+    finally:
+        db.close()
+
+
+def test_expense_edit_calculates_gross_from_net():
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        exp = Expense(apartment_id=None, date='2025-01-01', gross_amount=50.0, vat_percent=22.0, net_amount=39.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=39.0, notes='edit-from-net')
+        db.add(exp)
+        db.commit()
+
+        client = TestClient(app)
+        r = client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        assert r.status_code in (200, 303)
+        r = client.post(
+            f'/money/expenses/{exp.id}/edit',
+            data={
+                'net_amount': '78.0',
+                'vat_percent': '22.0',
+                'date': '2025-01-01',
+                'notes': 'edit-from-net',
+            },
+        )
+
+        assert r.status_code in (200, 303)
+        db.refresh(exp)
+        assert float(exp.net_amount) == 78.0
+        assert float(exp.gross_amount) == 100.0
+    finally:
+        db.close()
+
 # when editing an existing recurring expense and you shift the series start date backwards,
 # previously generated occurrences should be recalculated (old dates removed).
 def test_shift_expense_series_backwards():
@@ -227,12 +397,72 @@ def test_shift_expense_series_backwards():
             }
         )
         assert resp.status_code in (200, 303)
+        db.expire_all()
         occs = db.query(Expense).filter(Expense.recurrence_id == r.id).all()
         dates = sorted([o.date for o in occs])
         assert '2025-02-01' in dates
         assert '2025-03-01' in dates
         assert '2025-04-01' in dates
-        assert '2025-05-01' not in dates
+        assert dates.count('2025-05-01') == 1
+    finally:
+        db.close()
+
+
+def test_expand_open_recurrence_is_idempotent():
+    db = SessionLocal()
+    try:
+        r = Recurrence(type='monthly', start_date='2025-01-01')
+        db.add(r)
+        db.commit()
+        for month in range(1, 13):
+            exp = Expense(apartment_id=None, date=f'2025-{month:02d}-01', gross_amount=40.0, vat_percent=22.0, net_amount=31.2, pm_percent=0.0, pm_amount=0.0, net_after_pm=31.2, recurrence_id=r.id, notes='legacy-open')
+            db.add(exp)
+        db.add(Expense(apartment_id=None, date='2025-01-01', gross_amount=40.0, vat_percent=22.0, net_amount=31.2, pm_percent=0.0, pm_amount=0.0, net_after_pm=31.2, recurrence_id=r.id, notes='legacy-open-dup'))
+        db.commit()
+
+        inserted_first = expand_open_recurrences_to_current_year(db, current_year=2026)
+        inserted_second = expand_open_recurrences_to_current_year(db, current_year=2026)
+
+        occs = db.query(Expense).filter(Expense.recurrence_id == r.id).order_by(Expense.date).all()
+        assert inserted_first == 12
+        assert inserted_second == 0
+        assert len(occs) == 24
+        assert [o.date for o in occs].count('2025-01-01') == 1
+        assert occs[-1].date == '2026-12-01'
+        db.refresh(r)
+        assert r.next_date == '2027-01-01'
+    finally:
+        db.close()
+
+
+def test_expense_edit_get_backfills_open_series(monkeypatch):
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        r = Recurrence(type='monthly', start_date='2025-01-01')
+        db.add(r)
+        db.commit()
+        created = []
+        for month in range(1, 13):
+            exp = Expense(apartment_id=None, date=f'2025-{month:02d}-01', gross_amount=80.0, vat_percent=22.0, net_amount=62.4, pm_percent=0.0, pm_amount=0.0, net_after_pm=62.4, recurrence_id=r.id, notes='series-edit')
+            db.add(exp)
+            created.append(exp)
+        db.commit()
+        from app.routers import money as money_router
+
+        monkeypatch.setattr(
+            money_router,
+            'expand_open_recurrences_to_current_year',
+            lambda db_session: expand_open_recurrences_to_current_year(db_session, current_year=2026),
+        )
+        client = TestClient(app)
+        client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        resp = client.get(f'/money/expenses/{created[0].id}/edit')
+        assert resp.status_code in (200, 303)
+        assert '2026-12-01' in resp.text
+        occs = db.query(Expense).filter(Expense.recurrence_id == r.id).order_by(Expense.date).all()
+        assert len(occs) == 24
+        assert occs[-1].date == '2026-12-01'
     finally:
         db.close()
 
@@ -251,9 +481,31 @@ def test_edit_income_form_prefills_recurrence():
         resp = client.get(f'/money/incomes/{inc.id}/edit')
         assert resp.status_code in (200, 303)
         txt = resp.text
-        assert 'value="yearly"' in txt
+        assert '<option value="yearly" selected>' in txt
         assert 'name="recurrence_start"' in txt and '2024' in txt
         assert 'name="recurrence_end"' in txt and '2026' in txt
+    finally:
+        db.close()
+
+
+def test_edit_income_form_does_not_infer_recurring_from_date_overlap():
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        r = Recurrence(type='yearly', start_date='2024-01-01', end_date='2026-01-01')
+        db.add(r)
+        db.commit()
+        inc = Income(apartment_id=None, platform_id=None, date='2025-01-01', gross_amount=123.0, vat_percent=22.0, net_amount=95.94, pm_percent=0.0, pm_amount=0.0, net_after_pm=95.94)
+        db.add(inc)
+        db.commit()
+        client = TestClient(app)
+        client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        resp = client.get(f'/money/incomes/{inc.id}/edit')
+        assert resp.status_code in (200, 303)
+        txt = resp.text
+        assert 'name="orig_recurrence_id" value=""' in txt
+        assert '<option value="none" selected>' in txt
+        assert 'Falla rientrare nella serie' not in txt
     finally:
         db.close()
 
@@ -363,21 +615,23 @@ def test_add_income_with_apartment_pm_defaults_associated_pm_and_percent():
 
 
 def test_stats_year_dropdown_shows_data_years_only():
-    # create a historical expense so that 2025 appears but not 2026
+    # create a dedicated future expense so the stats year dropdown remains deterministic
     db = SessionLocal()
     try:
         admin = create_admin(db)
         client = TestClient(app)
         client.post('/auth/login', data={'username':'testadmin','password':'secret'})
+        stats_year = 2037
         client.post('/money/expenses/add', data={
             'gross_amount': '10.0',
             'vat_percent': '22.0',
-            'date': '2025-06-15',
+            'date': f'{stats_year}-06-15',
         })
         r = client.get('/stats')
         assert r.status_code == 200
-        assert 'value="2025"' in r.text
-        assert 'value="2026"' not in r.text
+        assert '<option value="0" selected>Tutti</option>' in r.text
+        assert 'value="2037"' in r.text
+        assert 'Tutti' in r.text
     finally:
         db.close()
 

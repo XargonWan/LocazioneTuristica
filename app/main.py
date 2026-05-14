@@ -5,9 +5,11 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 from starlette.templating import Jinja2Templates
 
+from .backup import create_backup, finish_request_backup_tracking, get_request_backup_state, start_request_backup_tracking
 from .db import init_db, SessionLocal
-from .models import Income, Expense
+from .models import Attachment, Income, Expense
 from .auth_utils import get_current_user
+from .utils import expand_open_recurrences_to_current_year, get_setting_int
 
 app = FastAPI(title="LocazioneTuristica")
 
@@ -56,6 +58,33 @@ async def startup_event():
 
 
 @app.middleware("http")
+async def automatic_backup_middleware(request: Request, call_next):
+    token = start_request_backup_tracking()
+    try:
+        response = await call_next(request)
+    except Exception:
+        finish_request_backup_tracking(token)
+        raise
+
+    try:
+        state = get_request_backup_state()
+        if response.status_code < 400 and state and state.db_changed and not state.backup_created:
+            create_backup(
+                kind="auto",
+                include_attachments=state.attachments_changed,
+                apply_rotation=True,
+                retention=get_setting_int("backup_auto_retention", 7, minimum=1),
+            )
+            state.backup_created = True
+    except Exception as exc:
+        print(f"Automatic backup failed: {exc}")
+    finally:
+        finish_request_backup_tracking(token)
+
+    return response
+
+
+@app.middleware("http")
 async def log_405_middleware(request: Request, call_next):
     response = await call_next(request)
     if response.status_code == 405:
@@ -99,6 +128,8 @@ async def overview(request: Request):
         return RedirectResponse(url="/login")
     db = SessionLocal()
     try:
+        expand_open_recurrences_to_current_year(db)
+        from sqlalchemy.orm import joinedload
         # Compute basic monthly totals for requested year (defaults to current year)
         from datetime import datetime
         current_year = datetime.now().year
@@ -111,8 +142,24 @@ async def overview(request: Request):
         except Exception:
             # ignore bad input and stick with current year
             year = current_year
-        incomes = db.query(Income).all()
-        expenses = db.query(Expense).all()
+        incomes = db.query(Income).options(joinedload(Income.recurrence), joinedload(Income.associated_pm)).all()
+        expenses = db.query(Expense).options(joinedload(Expense.recurrence), joinedload(Expense.associated_pm)).all()
+
+        def recurrence_payload(entry):
+            recurrence = getattr(entry, 'recurrence', None)
+            if not recurrence or not getattr(recurrence, 'type', None):
+                return {
+                    'recurrence_type': None,
+                    'recurrence_label': None,
+                    'recurrence_start': None,
+                    'recurrence_end': None,
+                }
+            return {
+                'recurrence_type': recurrence.type,
+                'recurrence_label': 'Mensile' if recurrence.type == 'monthly' else 'Annuale' if recurrence.type == 'yearly' else recurrence.type,
+                'recurrence_start': recurrence.start_date,
+                'recurrence_end': recurrence.end_date,
+            }
         # determine which years have any entries so we can limit navigation
         years_with_data = set()
         for inc in incomes:
@@ -145,20 +192,28 @@ async def overview(request: Request):
         # track gross PM due separately so we can still display it
         for m in months:
             months[m]['pm_due'] = 0.0
+        annual_income_net_total = 0.0
+        annual_expense_total = 0.0
+        annual_pm_accrued_total = 0.0
+        annual_pm_paid_total = 0.0
         for inc in incomes:
             try:
                 d = datetime.strptime(inc.date, '%Y-%m-%d')
             except Exception:
                 continue
             if d.year == year:
+                pm_amount = float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+                net_amount = float(getattr(inc, 'net_amount', 0.0) or 0.0)
                 # use net_after_pm if it exists (computed when income is created/edited);
                 # fall back to net_amount minus pm_amount to avoid counting VAT or PM twice
                 net_val = float(getattr(inc, 'net_after_pm', None) or 0.0)
                 if not net_val:
                     # inc.net_after_pm may be zero when not set, so compute defensively
-                    net_val = float(getattr(inc, 'net_amount', 0.0) or 0.0) - float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+                    net_val = net_amount - pm_amount
                 months[d.month]['income'] += net_val
-                months[d.month]['pm_due'] += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+                months[d.month]['pm_due'] += pm_amount
+                annual_income_net_total += net_amount
+                annual_pm_accrued_total += pm_amount
         for exp in expenses:
             try:
                 d = datetime.strptime(exp.date, '%Y-%m-%d')
@@ -166,14 +221,46 @@ async def overview(request: Request):
                 continue
             if d.year == year:
                 # expenses are counted as their gross amounts (as requested by user)
-                months[d.month]['expense'] += float(exp.gross_amount)
+                gross_amount = float(exp.gross_amount)
+                months[d.month]['expense'] += gross_amount
                 # if this expense represents a payment to a PM, reduce the outstanding due
                 if exp.associated_pm_id:
-                    months[d.month]['pm_due'] -= float(exp.gross_amount)
+                    months[d.month]['pm_due'] -= gross_amount
+                    annual_pm_paid_total += gross_amount
+                else:
+                    annual_expense_total += gross_amount
         months_list = [{'month': m, 'income': months[m]['income'], 'expense': months[m]['expense']} for m in sorted(months.keys())]
         # include pm_due in months list for template
         for m in months_list:
             m['pm_due'] = months[m['month']]['pm_due']
+        current_year_income_ids = []
+        for inc in incomes:
+            try:
+                d = datetime.strptime(inc.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year == year and inc.id:
+                current_year_income_ids.append(inc.id)
+
+        current_year_expense_ids = []
+        for exp in expenses:
+            try:
+                d = datetime.strptime(exp.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year == year and exp.id:
+                current_year_expense_ids.append(exp.id)
+
+        attachments_by_income = {}
+        if current_year_income_ids:
+            for attachment in db.query(Attachment).filter(Attachment.income_id.in_(current_year_income_ids)).all():
+                attachments_by_income.setdefault(attachment.income_id, []).append(attachment)
+
+        attachments_by_expense = {}
+        if current_year_expense_ids:
+            for attachment in db.query(Attachment).filter(Attachment.expense_id.in_(current_year_expense_ids)).all():
+                attachments_by_expense.setdefault(attachment.expense_id, []).append(attachment)
+
         # Build per-month entries lists for incomes and expenses so the template can render details
         entries_by_month = {m: [] for m in range(1, 13)}
         for inc in incomes:
@@ -188,7 +275,9 @@ async def overview(request: Request):
                         associated_pm_name = f"{inc.associated_pm.first_name} {inc.associated_pm.last_name}"
                 except Exception:
                     associated_pm_name = None
-                entries_by_month[d.month].append({'type': 'income', 'date': d, 'raw_date': inc.date, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'apartment_id': getattr(inc, 'apartment_id', None), 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(inc, 'pm_amount', 0.0) or 0.0), 'cleaning_emoji': '🧹' if getattr(inc, 'apartment_id', None) else ''})
+                item = {'type': 'income', 'date': d, 'raw_date': inc.date, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'apartment_id': getattr(inc, 'apartment_id', None), 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(inc, 'pm_amount', 0.0) or 0.0), 'cleaning_emoji': '🧹' if getattr(inc, 'apartment_id', None) else ''}
+                item.update(recurrence_payload(inc))
+                entries_by_month[d.month].append(item)
                 # include net_amount so overview modals can display netto computed from VAT
                 entries_by_month[d.month][-1]['net_amount'] = float(getattr(inc, 'net_amount', 0.0) or 0.0)
         for exp in expenses:
@@ -204,7 +293,9 @@ async def overview(request: Request):
                 except Exception:
                     associated_pm_name = None
                 # expenses no longer expose PM percentage/amount
-                entries_by_month[d.month].append({'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': 0.0, 'pm_amount': 0.0, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)})
+                item = {'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': 0.0, 'pm_amount': 0.0, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)}
+                item.update(recurrence_payload(exp))
+                entries_by_month[d.month].append(item)
         # Sort entries in each month by date ascending (earliest first)
         for m in range(1,13):
             entries_by_month[m].sort(key=lambda x: x['date'], reverse=False)
@@ -212,16 +303,12 @@ async def overview(request: Request):
         # totals should reflect the same base
         total_income = sum([m['income'] for m in months_list])
         total_expense = sum([m['expense'] for m in months_list])
-        pm_paid_total = 0.0
-        for inc in incomes:
-            try:
-                d = datetime.strptime(inc.date, '%Y-%m-%d')
-            except Exception:
-                continue
-            if d.year == year:
-                pm_paid_total += float(getattr(inc, 'pm_amount', 0.0) or 0.0)
-        pm_paid_pct = round((pm_paid_total / total_income) * 100, 2) if total_income > 0 else 0.0
-        return templates.TemplateResponse(request, "overview.html", {'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct})
+        pm_paid_total = annual_pm_paid_total
+        pm_paid_pct = round((pm_paid_total / annual_income_net_total) * 100, 2) if annual_income_net_total > 0 else 0.0
+        pm_due_total = max(annual_pm_accrued_total - annual_pm_paid_total, 0.0)
+        grand_total_real = annual_income_net_total - annual_expense_total - annual_pm_paid_total
+        grand_total_virtual = grand_total_real - pm_due_total
+        return templates.TemplateResponse(request, "overview.html", {'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'attachments_by_income': attachments_by_income, 'attachments_by_expense': attachments_by_expense, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct, 'annual_income_net_total': annual_income_net_total, 'annual_expense_total': annual_expense_total, 'annual_pm_accrued_total': annual_pm_accrued_total, 'annual_pm_paid_total': annual_pm_paid_total, 'annual_pm_due_total': pm_due_total, 'grand_total_real': grand_total_real, 'grand_total_virtual': grand_total_virtual})
     finally:
         db.close()
 

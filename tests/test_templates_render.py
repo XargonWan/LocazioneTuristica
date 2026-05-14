@@ -8,12 +8,45 @@ class R:
         self.session = {"username": "tester", "role": "admin"}
         self.path = "/"
         self.cookies = {}
+        self.query_params = {}
 
 
 def test_stats_template_years_list():
-    rendered = templates.env.get_template("stats.html").render(request=R(), pms=[], companies=[], platforms=[], pm_totals={}, company_totals={}, platform_totals={}, year=2025, now=2026, available_years=[2025])
+    rendered = templates.env.get_template("stats.html").render(request=R(), pms=[], companies=[], platforms=[], pm_totals={}, company_totals={}, platform_totals={}, year=0, now=2026, available_years=[2025])
+    assert '<option value="0" selected>Tutti</option>' in rendered
     assert '<option value="2025"' in rendered
     assert '<option value="2026"' not in rendered
+    assert 'id="stats-pm-due"' in rendered
+    assert 'id="stats-grand-real"' in rendered
+    assert 'id="stats-grand-virtual"' in rendered
+
+
+def test_stats_template_shows_pm_and_company_labels():
+    pm = type('PM', (), {'id': 1, 'first_name': 'Mario', 'last_name': 'Rossi'})
+    company = type('C', (), {'id': 2, 'company_name': 'Pulizie Rossi'})
+    platform = type('P', (), {'id': 3, 'name': 'AirBnB'})
+    rendered = templates.env.get_template("stats.html").render(
+        request=R(),
+        pms=[pm],
+        companies=[company],
+        platforms=[platform],
+        pm_totals={1: 10.0},
+        company_totals={2: 20.0},
+        platform_totals={3: 30.0},
+        year=0,
+        now=2026,
+        available_years=[2025],
+    )
+    assert 'Mario Rossi' in rendered
+    assert 'Pulizie Rossi' in rendered
+    assert 'window.reloadSelections' in rendered
+    assert 'updateNetTotal' in rendered
+    assert "Entrate nette del filtro corrente, gia al netto dell'IVA e della quota PM." in rendered
+    assert "Spese registrate nel filtro corrente, inclusi eventuali pagamenti fatti ai PM che qui restano conteggiati nel totale spese." in rendered
+    assert "Quanto hai effettivamente gia versato ai PM nel filtro corrente tramite spese associate a un PM." in rendered
+    assert "Quota PM maturata sulle entrate del filtro corrente ma non ancora versata." in rendered
+    assert "Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate nette prima del PM meno spese non PM meno PM gia versato. Se devi ancora qualcosa al PM, qui resta ancora dentro." in rendered
+    assert "Saldo virtuale del filtro corrente ipotizzando di aver gia versato tutto il PM ancora dovuto." in rendered
 
 
 def test_company_cleaning_checkbox_and_badge():
@@ -82,12 +115,36 @@ def test_settings_users_attachments_templates_preserve_next():
     )
     assert 'name="next" value="/overview?year=2025"' in users_rendered
 
+    fake_expense = type('E', (), {'id': 12, 'date': '2025-01-01', 'notes': 'Assicurazione', 'apartment': type('APT', (), {'name': 'Casa 1'})})
+    fake_attachment = type('A', (), {'id': 5, 'filename': 'contratto.pdf', 'mimetype': 'application/pdf', 'size': 123, 'expense': fake_expense, 'income': None})
     attachments_rendered = templates.env.get_template('attachments_index.html').render(
         request=R(),
-        attachments=[],
+        attachments=[fake_attachment],
         next='/overview?year=2025'
     )
+    assert 'Documenti' in attachments_rendered
     assert 'name="next" value="/overview?year=2025"' in attachments_rendered
+    assert '/attachments/5/view?next=' in attachments_rendered
+    assert '/attachments/download/5' in attachments_rendered
+    assert '/attachments/5/delete' in attachments_rendered
+    assert 'Associato a spesa del 01/01/2025: Assicurazione / Casa 1' in attachments_rendered
+    assert '/money/expenses/12/edit?next=' in attachments_rendered
+
+
+def test_attachment_view_template_renders_preview_and_actions():
+    fake_attachment = type('A', (), {'id': 7, 'filename': 'scan.pdf', 'mimetype': 'application/pdf', 'size': 456})
+    rendered = templates.env.get_template('attachment_view.html').render(
+        request=R(),
+        attachment=fake_attachment,
+        next_url='/overview?year=2025',
+        file_exists=True,
+        preview_kind='pdf',
+        preview_available=True,
+    )
+    assert 'href="/overview?year=2025"' in rendered
+    assert '/attachments/7/inline' in rendered
+    assert '/attachments/download/7' in rendered
+    assert '/attachments/7/delete' in rendered
 
 
 def test_cleaning_templates_render():
@@ -133,6 +190,8 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'recurrence-range' in rendered
     assert 'name="recurrence_start"' in rendered
     assert 'name="recurrence_end"' in rendered
+    assert "Vuoto = ricorrenza senza scadenza" in rendered
+    assert 'dateInput.value.slice(0, 7)' in rendered
     # PM association checkbox exists on add form
     assert 'id="associate_pm_checkbox"' in rendered
     # cleaning checkbox belongs on expenses page; not relevant here
@@ -143,6 +202,9 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'list-group-item-warning' in rendered
     assert 'const focusIncomeId = 1;' in rendered
     assert 'bootstrap.Modal.getOrCreateInstance' in rendered
+    assert 'id="incomeAddAttachmentUploadForm"' in rendered
+    assert 'form="incomeAddAttachmentUploadForm"' in rendered
+    assert 'Carica nuovo allegato' in rendered
     # edit toggles should not appear when next parameter is used (add-from-overview)
     assert 'id="editModeToggleExp"' not in rendered
     assert 'id="editModeToggle"' not in rendered
@@ -153,10 +215,23 @@ def test_incomes_template_shows_pm_and_delete_modal():
     # ensure select-all label id exists
     assert 'selectAllIncomesLabel' in rendered
     # also simulate an income with recurrence to see detail text
-    fake_r = type('R', (), {'start_date':'2025-01-01','end_date':'2025-06-01'})
+    fake_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':'2025-06-01'})
+    fake_attachment_income = type('A', (), {'id': 301, 'filename': 'ricevuta.pdf', 'mimetype': 'application/pdf', 'size': 111})
     fake_inc2 = type('X', (), {'id': 2,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':10.0,'associated_pm_name':'PM One','notes':'Incasso pulito','recurrence': fake_r, 'cleaning_emoji': '🧹'})
-    rendered3 = templates.env.get_template('incomes_index.html').render(request=R(), incomes=[fake_inc2], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
+    rendered3 = templates.env.get_template('incomes_index.html').render(request=R(), incomes=[fake_inc2], apartments=[], platforms=[], attachments=[], attachments_by_income={2: [fake_attachment_income]}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
     assert 'Ricorrenza:' in rendered3
+    assert 'Mensile' in rendered3
+    assert 'incomeAttachmentsModal-2' in rendered3
+    assert '📎' in rendered3
+    assert '/attachments/301/view?next=' in rendered3
+    assert '/attachments/download/301' in rendered3
+    assert '/attachments/301/delete' in rendered3
+    fake_open_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':None})
+    fake_inc_open = type('X', (), {'id': 3,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':10.0,'associated_pm_name':'PM One','notes':'Aperta','recurrence': fake_open_r, 'cleaning_emoji': ''})
+    rendered_open = templates.env.get_template('incomes_index.html').render(request=R(), incomes=[fake_inc_open], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
+    assert "senza scadenza (calcolata fino all'anno corrente)" in rendered_open
+    assert 'Aperta 🗘' in rendered_open
+    assert 'Dettagli Entrata Aperta 🗘' in rendered_open
     # plus button for expense creation should appear on month header
     assert '+ Spesa' not in rendered3  # not relevant here
     # when next not provided, edit toggles should be visible for nonempty lists
@@ -166,16 +241,36 @@ def test_incomes_template_shows_pm_and_delete_modal():
 
     # create a trivial fake expense for rendering check
     fake_e = type("X", (), {"id": 5, "date": "2025-01-02", "gross_amount": 10, "net_amount": 8.0, "vat_percent": 20.0, "pm_percent": 0.0, "pm_amount": 0.0, "net_after_pm": 8.0, "associated_pm_name": None, "notes": "", "is_cleaning": False})
-    rendered_no_next_exp = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e], apartments=[], attachments=[], pms=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next=None)
+    cleaning_company = type('C', (), {'id': 3, 'company_name': 'Cleaner Modal'})
+    rendered_no_next_exp = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e], apartments=[], attachments=[], pms=[], cleaning_companies=[cleaning_company], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next=None)
     assert 'id="editModeToggleExp"' in rendered_no_next_exp
     assert 'btn-primary' in rendered_no_next_exp  # toggle button filled
+    assert 'id="cleaningCompanyModal"' in rendered_no_next_exp
+    assert 'Cleaner Modal' in rendered_no_next_exp
+    assert 'name="associated_company_id"' in rendered_no_next_exp
+    assert "Puoi inserire il lordo o il netto" in rendered_no_next_exp
+    assert 'setupExpenseAmountSync' in rendered_no_next_exp
+    assert "net / vatFactor" in rendered_no_next_exp
+    assert 'id="bulk_expense_net_amount"' in rendered_no_next_exp
+    assert 'id="bulk_expense_gross_amount"' in rendered_no_next_exp
+    assert 'id="bulk_expense_vat_percent"' in rendered_no_next_exp
 
     # simulate clicking '+' on a month by providing a date parameter
-    rendered_with_date = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[], apartments=[], attachments=[], pms=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next=None, default_date="2025-03-01")
+    rendered_with_date = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next=None, default_date="2025-03-01")
     assert 'value="2025-03-01"' in rendered_with_date
     # same for incomes
     rendered_with_date_inc = templates.env.get_template("incomes_index.html").render(request=R(), incomes=[], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next=None, default_date="2025-03-01")
     assert 'value="2025-03-01"' in rendered_with_date_inc
+
+    rendered_create_mode = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e], apartments=[], attachments=[], pms=[], cleaning_companies=[cleaning_company], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next='/overview?year=2025', create_mode=True)
+    assert 'Aggiungi spesa' in rendered_create_mode
+    assert 'Dettagli Spesa' not in rendered_create_mode
+    assert 'Nuova spesa' not in rendered_create_mode
+
+    rendered_income_create_mode = templates.env.get_template("incomes_index.html").render(request=R(), incomes=[fake_inc], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next='/overview?year=2025', create_mode=True)
+    assert 'Aggiungi entrata' in rendered_income_create_mode
+    assert 'Dettagli Entrata' not in rendered_income_create_mode
+    assert 'Nuova entrata' not in rendered_income_create_mode
 
 
 def test_expenses_template_title_and_delete_modal():
@@ -194,7 +289,7 @@ def test_expenses_template_title_and_delete_modal():
     })
     # create a cleaning expense too to verify emoji is not shown on expenses anymore
     fake_clean = type("X", (), {"id": 11, "date": "2025-12-02", "gross_amount": 50, "net_amount": 41.0, "vat_percent": 22.0, "pm_percent": 0.0, "pm_amount": 0.0, "net_after_pm": 41.0, "associated_pm_name": None, "notes": "Pulizia standard", "is_cleaning": True})
-    rendered = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e, fake_clean], apartments=[], attachments=[], pms=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
+    rendered = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e, fake_clean], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
     assert "Dettagli Spesa Riparazione caldaia" in rendered
     assert '🧹' not in rendered
     # verify the new wording for PM association
@@ -208,37 +303,94 @@ def test_expenses_template_title_and_delete_modal():
     assert 'recurrence-range' in rendered
     assert 'name="recurrence_start"' in rendered
     assert 'name="recurrence_end"' in rendered
+    assert "Vuoto = ricorrenza senza scadenza" in rendered
+    assert 'dateInput.value.slice(0, 7)' in rendered
     # PM association checkbox exists
     assert 'id="associate_pm_checkbox"' in rendered
+    assert 'id="expenseAddAttachmentUploadForm"' in rendered
+    assert 'form="expenseAddAttachmentUploadForm"' in rendered
+    assert 'Carica nuovo allegato' in rendered
     # cleaning checkbox should also be on add form
     assert 'name="is_cleaning"' in rendered
     # fake an expense with recurrence property in modal to test details display
     # simulate by inserting a fake recurrence into context manually
     # recurrence info line should appear when e.recurrence is defined
     # (render a second template call to verify)
-    fake_r = type('R', (), {'start_date':'2025-01-01','end_date':'2025-06-01'})
+    fake_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':'2025-06-01'})
+    fake_attachment_expense = type('A', (), {'id': 401, 'filename': 'fattura.pdf', 'mimetype': 'application/pdf', 'size': 222})
     fake_e2 = type('X', (), {'id': 10,'date':'2025-01-01','gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':15.0,'pm_amount':15.0,'net_after_pm':63.0,'associated_pm_name':'PM Two','notes':'Riparazione caldaia','recurrence': fake_r})
-    rendered2 = templates.env.get_template('expenses_index.html').render(request=R(), expenses=[fake_e2], apartments=[], attachments=[], pms=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
+    rendered2 = templates.env.get_template('expenses_index.html').render(request=R(), expenses=[fake_e2], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={10: [fake_attachment_expense]}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
     assert 'Ricorrenza:' in rendered2
+    assert 'Mensile' in rendered2
+    assert 'expenseAttachmentsModal-10' in rendered2
+    assert '📎' in rendered2
+    assert '/attachments/401/view?next=' in rendered2
+    assert '/attachments/download/401' in rendered2
+    assert '/attachments/401/delete' in rendered2
+    fake_open_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':None})
+    fake_e_open = type('X', (), {'id': 12,'date':'2025-01-01','gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':0.0,'pm_amount':0.0,'net_after_pm':78.0,'associated_pm_name':None,'notes':'Assicurazione','recurrence': fake_open_r})
+    rendered_open_exp = templates.env.get_template('expenses_index.html').render(request=R(), expenses=[fake_e_open], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
+    assert "senza scadenza (calcolata fino all'anno corrente)" in rendered_open_exp
+    assert 'Assicurazione 🗘' in rendered_open_exp
+    assert 'Dettagli Spesa Assicurazione 🗘' in rendered_open_exp
     # verify that an edit button in the list includes the next parameter when provided
-    rendered_with_next = templates.env.get_template('expenses_index.html').render(request=R(), expenses=[fake_e2], apartments=[], attachments=[], pms=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next='/overview?year=2025')
+    rendered_with_next = templates.env.get_template('expenses_index.html').render(request=R(), expenses=[fake_e2], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next='/overview?year=2025')
     assert '/money/expenses/10/edit?next=/overview?year=2025' in rendered_with_next
     # ensure edit toggle also hidden in this context
     assert 'id="editModeToggleExp"' not in rendered_with_next
-    # now test a detached edit form scenario for recurrence inference/hidden input
-    fake_exp = type('X', (), {'recurrence': fake_r, 'recurrence_id': None, '_orig_recurrence_id': 56, 'date':'2025-01-01', 'net_after_pm': 0.0})
-    edit_html = templates.env.get_template('expense_edit.html').render(request=R(), expense=fake_exp, apartments=[], pms=[], companies=[], attached=[], next=None)
-    assert 'value="monthly"' in edit_html
+    # now test a detached edit form scenario with explicit origin recurrence
+    fake_exp = type('X', (), {'id': 77, 'recurrence': None, 'recurrence_id': None, 'orig_recurrence_id': 56, 'date':'2025-01-01', 'net_after_pm': 0.0})
+    edit_html = templates.env.get_template('expense_edit.html').render(request=R(), expense=fake_exp, apartments=[], pms=[], companies=[], attached=[fake_attachment_expense], next=None, display_recurrence=fake_r)
+    assert '<option value="none" selected>' in edit_html
     assert 'name="orig_recurrence_id"' in edit_html
     assert '56' in edit_html
-    # just ensure the series radio is present
-    assert 'id="apply_series"' in edit_html
-    assert 'value="series"' in edit_html
+    assert 'Lascia vuoto "Fino a" per una ricorrenza senza scadenza' in edit_html
+    assert 'name="rejoin_recurrence"' in edit_html
+    assert 'Falla rientrare nella serie' in edit_html
+    assert 'Serie originaria:' in edit_html
+    assert "Puoi inserire il lordo o il netto" in edit_html
+    assert 'setupExpenseAmountSync' in edit_html
+    assert "net / vatFactor" in edit_html
+    assert 'id="expenseEditAttachmentUploadForm"' in edit_html
+    assert 'name="expense_id" value="77"' in edit_html
+    assert 'Carica allegati' in edit_html
+    assert 'multiple' in edit_html
+    assert '/attachments/401/view?next=' in edit_html
+    assert '/attachments/download/401' in edit_html
+    assert '/attachments/401/delete' in edit_html
+    assert 'id="apply_series"' not in edit_html
 
 
-def test_overview_has_table_borders():
-    rendered = templates.env.get_template("overview.html").render(request=R(), months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}, {"month": 2, "income": 0.0, "expense": 0.0, "pm_due": 0.0}], entries_by_month={1: [], 2: []}, year=2025, prev_year=None, next_year=None, available_years=[2025], current_year=2025, total_income=0.0, total_expense=0.0, pm_paid_total=0.0, pm_paid_pct=0.0)
-    assert "table table-sm" in rendered
+def test_overview_annual_summary_replaces_legacy_table():
+    rendered = templates.env.get_template("overview.html").render(
+        request=R(),
+        months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}, {"month": 2, "income": 0.0, "expense": 0.0, "pm_due": 0.0}],
+        entries_by_month={1: [], 2: []},
+        year=2025,
+        prev_year=None,
+        next_year=None,
+        available_years=[2025],
+        current_year=2025,
+        total_income=0.0,
+        total_expense=0.0,
+        pm_paid_total=0.0,
+        pm_paid_pct=0.0,
+        annual_income_net_total=120.0,
+        annual_expense_total=40.0,
+        annual_pm_paid_total=20.0,
+        annual_pm_due_total=10.0,
+        grand_total_real=60.0,
+        grand_total_virtual=50.0,
+    )
+    assert 'Gran totale reale:' in rendered
+    assert 'Gran totale virtuale:' in rendered
+    assert 'PM gia versato:' in rendered
+    assert 'PM ancora da versare:' in rendered
+    assert 'Saldo reale dei soldi effettivamente transitati' in rendered
+    assert 'Saldo virtuale ipotizzando di aver gia versato tutto il PM ancora dovuto.' in rendered
+    assert 'class="w-100"' in rendered
+    assert 'id="overview-table"' not in rendered
+    assert '<th>Mese</th>' not in rendered
     assert 'overview-main-column' in rendered
     assert 'col-md-8' not in rendered
 
@@ -275,7 +427,7 @@ def test_overview_monthly_totals_reflect_net_and_pm_and_expenses():
         pm_paid_pct=round((10.0/70.0)*100,2)
     )
     # net total should be 70 - 20 = 50 and classified positive
-    assert 'Gennaio - <span class="net-total net-positive">€50.00' in rendered
+    assert 'Gennaio - Risultato del mese: <span class="net-total net-positive">€50.00' in rendered
 
 
 def test_overview_pm_due_subtracted_by_payment():
@@ -302,7 +454,7 @@ def test_overview_pm_due_subtracted_by_payment():
         pm_paid_total=25.0,
         pm_paid_pct=25.0
     )
-    assert '<small class="ms-3 text-danger">PM dovuto: €15.00' in rendered2
+    assert '<small class="ms-3 text-danger">PM ancora da versare: €15.00' in rendered2
 
 
 def test_overview_income_shows_net_and_inline_delete():
@@ -310,6 +462,72 @@ def test_overview_income_shows_net_and_inline_delete():
     rendered = templates.env.get_template("overview.html").render(request=R(), months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}], entries_by_month={1: [{'type': 'income', 'date': '2025-01-01', 'gross_amount': 100.0, 'net_amount': 78.0, 'notes': 'Rent', 'id': 1}]}, year=2025, prev_year=None, next_year=None, available_years=[2025], current_year=2025, total_income=0.0, total_expense=0.0, pm_paid_total=0.0, pm_paid_pct=0.0)
     assert "Importo netto" in rendered
     assert "delInlineOvInc-1" in rendered
+
+
+def test_overview_entry_shows_attachment_clip_and_popup_without_delete():
+    attachment = type('A', (), {'id': 33, 'filename': 'ricevuta.pdf', 'mimetype': 'application/pdf', 'size': 128})
+    rendered = templates.env.get_template("overview.html").render(
+        request=R(),
+        months=[{"month": 1, "income": 100.0, "expense": 0.0, "pm_due": 0.0}],
+        entries_by_month={1: [{'type': 'income', 'date': '2025-01-01', 'raw_date': '2025-01-01', 'gross_amount': 100.0, 'net_amount': 78.0, 'notes': 'Rent', 'id': 1, 'cleaning_emoji': ''}]},
+        attachments_by_income={1: [attachment]},
+        attachments_by_expense={},
+        year=2025,
+        prev_year=None,
+        next_year=None,
+        available_years=[2025],
+        current_year=2025,
+        total_income=100.0,
+        total_expense=0.0,
+        pm_paid_total=0.0,
+        pm_paid_pct=0.0,
+    )
+    assert '📎' in rendered
+    assert 'ovAttachmentModal-income-1' in rendered
+    assert '/attachments/33/view?next=' in rendered
+    assert '/attachments/download/33' in rendered
+    assert '/attachments/33/delete' not in rendered
+
+
+def test_overview_modals_show_recurrence_frequency():
+    months = [{"month": 6, "income": 0.0, "expense": 80.0, "pm_due": 0.0}]
+    entries_by_month = {
+        6: [
+            {
+                'type': 'expense',
+                'date': '2025-06-01',
+                'gross_amount': 80.0,
+                'notes': 'Insurance',
+                'id': 31,
+                'associated_pm_name': None,
+                'pm_percent': 0.0,
+                'pm_amount': 0.0,
+                'net_after_pm': 80.0,
+                'recurrence_type': 'monthly',
+                'recurrence_label': 'Mensile',
+                'recurrence_start': '2025-06-01',
+                'recurrence_end': None,
+            }
+        ]
+    }
+    rendered = templates.env.get_template("overview.html").render(
+        request=R(),
+        months=months,
+        entries_by_month=entries_by_month,
+        year=2025,
+        prev_year=None,
+        next_year=None,
+        available_years=[2025],
+        current_year=2025,
+        total_income=0.0,
+        total_expense=80.0,
+        pm_paid_total=0.0,
+        pm_paid_pct=0.0,
+    )
+    assert 'Ricorrenza:</strong> Mensile, da 01/06/2025' in rendered
+    assert "senza scadenza (calcolata fino all'anno corrente)" in rendered
+    assert 'Insurance 🗘' in rendered
+    assert 'Dettagli Spesa Insurance 🗘' in rendered
 
 
 def test_overview_year_navigation_links():
@@ -370,12 +588,22 @@ def test_overview_year_navigation_with_data():
 
 
 def test_income_edit_prefill_and_hidden_orig():
-    fake_r = type('R', (), {'start_date':'2024-01-01','end_date':'2026-01-01'})
-    fake_income = type('X', (), {'recurrence': fake_r, 'recurrence_id': None, '_orig_recurrence_id': 99, 'date':'2025-01-01'})
-    html = templates.env.get_template('income_edit.html').render(request=R(), income=fake_income, apartments=[], platforms=[], pms=[], attached=[], next=None)
-    assert 'value="yearly"' in html or 'value="monthly"' in html
+    fake_r = type('R', (), {'type':'yearly', 'start_date':'2024-01-01','end_date':'2026-01-01'})
+    fake_income = type('X', (), {'id': 88, 'recurrence': None, 'recurrence_id': None, 'orig_recurrence_id': 99, 'date':'2025-01-01'})
+    fake_attachment = type('A', (), {'id': 501, 'filename': 'bonifico.pdf', 'mimetype': 'application/pdf', 'size': 333})
+    html = templates.env.get_template('income_edit.html').render(request=R(), income=fake_income, apartments=[], platforms=[], pms=[], attached=[fake_attachment], next=None, display_recurrence=fake_r)
+    assert '<option value="none" selected>' in html
     assert 'name="orig_recurrence_id"' in html
     assert '99' in html
-    # ensure the series radio is present (checked state may be formatted differently)
-    assert 'id="apply_series"' in html
-    assert 'value="series"' in html
+    assert 'Lascia vuoto "Fino a" per una ricorrenza senza scadenza' in html
+    assert 'name="rejoin_recurrence"' in html
+    assert 'Falla rientrare nella serie' in html
+    assert 'Serie originaria:' in html
+    assert 'id="incomeEditAttachmentUploadForm"' in html
+    assert 'name="income_id" value="88"' in html
+    assert 'Carica allegati' in html
+    assert 'multiple' in html
+    assert '/attachments/501/view?next=' in html
+    assert '/attachments/download/501' in html
+    assert '/attachments/501/delete' in html
+    assert 'id="apply_series"' not in html

@@ -11,6 +11,7 @@ from app.models import CleaningService
 from app.models import Income, Expense
 from datetime import datetime
 from app.debug import log_request_form
+from app.utils import expand_open_recurrences_to_current_year
 
 router = APIRouter(prefix="/anagrafiche")
 from app.main import templates
@@ -38,6 +39,7 @@ async def index(request: Request):
         return RedirectResponse(url='/login')
     db = SessionLocal()
     try:
+        expand_open_recurrences_to_current_year(db)
         pms = db.query(PropertyManager).all()
         apts = db.query(Apartment).all()
         companies = db.query(Company).all()
@@ -133,6 +135,7 @@ async def edit_pm_get(request: Request, pm_id: int):
         return RedirectResponse(url='/login')
     db = SessionLocal()
     try:
+        expand_open_recurrences_to_current_year(db)
         pm = db.query(PropertyManager).filter(PropertyManager.id == pm_id).first()
         if not pm:
             return RedirectResponse(url=_anagrafiche_default_next(request))

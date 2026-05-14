@@ -1,15 +1,16 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% import 'attachment_macros.html' as attachment_ui %}
 {% set return_url = next if next is defined and next else '/attachments' %}
-<h1>Allegati</h1>
+<h1>Documenti</h1>
 <div class="card">
   <div class="card-body">
     {% if request.session.get('role') == 'admin' %}
     <form method="post" action="/attachments/upload" enctype="multipart/form-data">
       <input type="hidden" name="next" value="{{ return_url }}">
       <div class="mb-3">
-        <input type="file" name="file" class="form-control" required>
+        <input type="file" name="file" class="form-control" multiple required>
       </div>
       <button class="btn btn-primary" type="submit">Carica</button>
     </form>
@@ -18,10 +19,28 @@
     <ul class="list-group mt-3">
       {% for a in attachments %}
       <li class="list-group-item">
-        <a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a> - {{ a.mimetype }} - {{ a.size }} bytes
+        {{ attachment_ui.action_row(a, return_url, request.session.get('role') == 'admin', True) }}
+        <div class="small text-muted mt-2">
+          {% if a.expense %}
+            Associato a spesa del {{ a.expense.date|format_date }}: {{ a.expense.notes or ('#' ~ a.expense.id) }}{% if a.expense.apartment %} / {{ a.expense.apartment.name }}{% endif %}
+          {% elif a.income %}
+            Associato a entrata del {{ a.income.date|format_date }}: {{ a.income.notes or ('#' ~ a.income.id) }}{% if a.income.apartment %} / {{ a.income.apartment.name }}{% endif %}
+          {% else %}
+            Non associato a nessuna spesa o entrata
+          {% endif %}
+        </div>
+        {% if a.expense %}
+        <div class="mt-2">
+          <a class="btn btn-sm btn-outline-secondary" href="/money/expenses/{{ a.expense.id }}/edit?next={{ return_url|urlencode }}">Apri spesa</a>
+        </div>
+        {% elif a.income %}
+        <div class="mt-2">
+          <a class="btn btn-sm btn-outline-secondary" href="/money/incomes/{{ a.income.id }}/edit?next={{ return_url|urlencode }}">Apri entrata</a>
+        </div>
+        {% endif %}
       </li>
       {% else %}
-      <li class="list-group-item">Nessun allegato</li>
+      <li class="list-group-item">Nessun documento</li>
       {% endfor %}
     </ul>
   </div>

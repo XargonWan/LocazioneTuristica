@@ -9,12 +9,11 @@
       <div class="col-md-3">
         <label>Anno</label>
         <select id="year-select" class="form-control">
+          <option value="0" {% if year == 0 %}selected{% endif %}>Tutti</option>
           {% if available_years %}
             {% for y in available_years %}
               <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
             {% endfor %}
-          {% else %}
-            <option value="{{ (year if year else now) | default(2025) }}">{{ (year if year else now) | default(2025) }}</option>
           {% endif %}
         </select>
       </div>
@@ -23,7 +22,7 @@
         <select id="pm-select" class="form-control">
           <option value="">Tutti</option>
           {% for pm in pms %}
-            <option value="{{ pm.id }}">{{ pm.name }}</option>
+            <option value="{{ pm.id }}">{{ pm.first_name }} {{ pm.last_name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -32,7 +31,7 @@
         <select id="company-select" class="form-control">
           <option value="">Tutte</option>
           {% for c in companies %}
-            <option value="{{ c.id }}">{{ c.name }}</option>
+            <option value="{{ c.id }}">{{ c.company_name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -46,10 +45,14 @@
         </select>
       </div>
     </div>
-    <div id="stats-totals" class="mb-3 d-flex gap-3">
-      <div><strong>Totale Entrate (netto, IVA/PM esclusi):</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
-      <div><strong>Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
-      <div><strong>Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
+    <div id="stats-totals" class="mb-3 d-flex flex-wrap gap-3 align-items-start">
+      <div><strong title="Entrate nette del filtro corrente, gia al netto dell'IVA e della quota PM.">Totale Entrate (netto, IVA/PM esclusi):</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
+      <div><strong title="Spese registrate nel filtro corrente, inclusi eventuali pagamenti fatti ai PM che qui restano conteggiati nel totale spese.">Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
+      <div><strong title="Quanto hai effettivamente gia versato ai PM nel filtro corrente tramite spese associate a un PM.">Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
+      <div><strong title="Quota PM maturata sulle entrate del filtro corrente ma non ancora versata.">PM da versare:</strong> <span id="stats-pm-due" class="text-warning">€0.00</span></div>
+      <div class="w-100"></div>
+      <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate nette prima del PM meno spese non PM meno PM gia versato. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span id="stats-grand-real" class="net-zero">€0.00</span></div>
+      <div><strong class="text-decoration-underline" title="Saldo virtuale del filtro corrente ipotizzando di aver gia versato tutto il PM ancora dovuto.">Gran totale virtuale:</strong> <span id="stats-grand-virtual" class="net-zero">€0.00</span></div>
     </div>
     <canvas id="monthly-chart"></canvas>
   </div>
@@ -63,7 +66,7 @@
         <ul class="list-group">
           {% for pm in pms %}
             <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('pm-select').value='{{ pm.id }}'; reloadSelections();">
-              <div>{{ pm.name }}</div>
+              <div>{{ pm.first_name }} {{ pm.last_name }}</div>
               <div>
                 <span class="badge bg-primary">€{{ (pm_totals[pm.id] if pm.id in pm_totals else 0)|float|round(2) }}</span>
               </div>
@@ -78,7 +81,7 @@
         <ul class="list-group">
           {% for c in companies %}
             <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('company-select').value='{{ c.id }}'; reloadSelections();">
-              <div>{{ c.name }}</div>
+              <div>{{ c.company_name }}</div>
               <div><span class="badge bg-secondary">€{{ (company_totals[c.id] if c.id in company_totals else 0)|float|round(2) }}</span></div>
             </li>
           {% else %}
@@ -103,6 +106,23 @@
   </div>
 </div>
 <script>
+    function updateNetTotal(elementId, value) {
+      const el = document.getElementById(elementId);
+      if (!el) {
+        return;
+      }
+      const amount = Number(value || 0);
+      el.textContent = `€${amount.toFixed(2)}`;
+      el.classList.remove('net-positive', 'net-negative', 'net-zero');
+      if (amount > 0) {
+        el.classList.add('net-positive');
+      } else if (amount < 0) {
+        el.classList.add('net-negative');
+      } else {
+        el.classList.add('net-zero');
+      }
+    }
+
     async function loadChart(year, pm=null, comp=null, pl=null){
       const incomeColor = (getComputedStyle(document.documentElement).getPropertyValue('--income-color') || '#1fa64a').trim();
       const expenseColor = (getComputedStyle(document.documentElement).getPropertyValue('--expense-color') || '#d9534f').trim();
@@ -112,9 +132,23 @@
     if(pl) qs += `&platform_id=${pl}`;
     const res = await fetch(`/api/stats/monthly?${qs}`)
     const data = await res.json();
-    const labels = data.data.map(d => d.month)
+    const labels = data.data.map(d => d.month_name)
     const income = data.data.map(d => d.income)
     const expense = data.data.map(d => d.expense)
+      // update totals DOM
+      const totals = data.totals || {};
+      document.getElementById('stats-inc').textContent = `€${Number(totals.income || 0).toFixed(2)}`;
+      document.getElementById('stats-exp').textContent = `€${Number(totals.expense || 0).toFixed(2)}`;
+      document.getElementById('stats-pm').textContent = `€${Number(totals.pm_paid || 0).toFixed(2)}`;
+      document.getElementById('stats-pm-pct').textContent = `${Number(totals.pm_percent || 0).toFixed(2)}%`;
+      document.getElementById('stats-pm-due').textContent = `€${Number(totals.pm_due || 0).toFixed(2)}`;
+      updateNetTotal('stats-grand-real', totals.grand_total_real || 0);
+      updateNetTotal('stats-grand-virtual', totals.grand_total_virtual || 0);
+
+    if (typeof Chart === 'undefined') {
+      return;
+    }
+
     const ctx = document.getElementById('monthly-chart').getContext('2d')
     if (window.monthlyChart) window.monthlyChart.destroy()
     window.monthlyChart = new Chart(ctx, {
@@ -128,31 +162,24 @@
       },
       options: { responsive: true }
     })
-      // update totals DOM
-      const totals = data.totals || {};
-      document.getElementById('stats-inc').textContent = `€${Number(totals.income || 0).toFixed(2)}`;
-      document.getElementById('stats-exp').textContent = `€${Number(totals.expense || 0).toFixed(2)}`;
-      document.getElementById('stats-pm').textContent = `€${Number(totals.pm_paid || 0).toFixed(2)}`;
-      document.getElementById('stats-pm-pct').textContent = `${Number(totals.pm_percent || 0).toFixed(2)}%`;
     }
   document.addEventListener('DOMContentLoaded', async () => {
-    const year = document.getElementById('year-select').value || new Date().getFullYear();
+    const year = document.getElementById('year-select').value || 0;
     await loadChart(year)
     const pmSel = document.getElementById('pm-select');
     const compSel = document.getElementById('company-select');
     const plSel = document.getElementById('platform-select');
-    function reloadSelections(){
+    window.reloadSelections = function reloadSelections(){
       const yr = document.getElementById('year-select').value;
       const pm = pmSel.value;
       const comp = compSel.value;
       const pl = plSel.value;
       loadChart(yr, pm, comp, pl)
     }
-    document.getElementById('year-select').addEventListener('change', (ev) => { reloadSelections() })
-    pmSel.addEventListener('change', (ev) => { reloadSelections() })
-    compSel.addEventListener('change', (ev) => { reloadSelections() })
-    plSel.addEventListener('change', (ev) => { reloadSelections() })
-    })
+    document.getElementById('year-select').addEventListener('change', () => { window.reloadSelections() })
+    pmSel.addEventListener('change', () => { window.reloadSelections() })
+    compSel.addEventListener('change', () => { window.reloadSelections() })
+    plSel.addEventListener('change', () => { window.reloadSelections() })
   })
 </script>
 {% endblock %}

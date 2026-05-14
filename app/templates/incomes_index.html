@@ -1,11 +1,18 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<h1>Entrate</h1>
+{% import 'attachment_macros.html' as attachment_ui %}
+{% set create_mode = create_mode if create_mode is defined else False %}
+{% set income_upload_return = income_upload_return if income_upload_return is defined else '/money/incomes' %}
+{% set income_create_url = income_create_url if income_create_url is defined else '/money/incomes?mode=create' %}
+{% set income_list_return = next if next is defined and next else '/money/incomes' %}
+<h1>{{ 'Aggiungi entrata' if create_mode else 'Entrate' }}</h1>
 <div class="card">
   <div class="card-body">
+    {% if not create_mode %}
     <div class="d-flex justify-content-between mb-2">
       <div>
+        <a class="btn btn-success btn-sm" href="{{ income_create_url }}">Nuova entrata</a>
         {% if incomes and incomes|length > 0 and not next %}
         <button id="editModeToggle" class="btn btn-primary btn-sm" onclick="toggleEditMode('incomes')">Modifica...</button>
         {% endif %}
@@ -16,6 +23,7 @@
         <label id="selectAllIncomesLabel" class="me-2 d-none">Seleziona tutto <input type="checkbox" id="selectAllIncomes" class="form-check-input ms-1"></label>
       </div>
     </div>
+    {% endif %}
     <form method="post" action="/money/incomes/add">
       <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
@@ -60,6 +68,11 @@
           <option value="{{ a.id }}">{{ a.filename }} ({{ a.size }} bytes)</option>
           {% endfor %}
         </select>
+        <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
+          <input type="file" name="file" id="income_add_attachment_file" class="form-control" form="incomeAddAttachmentUploadForm" multiple required>
+          <button class="btn btn-outline-secondary" type="submit" form="incomeAddAttachmentUploadForm">Carica nuovo allegato</button>
+        </div>
+        <small class="text-muted">Qui compaiono solo i documenti non ancora associati. Per l'archivio completo usa Documenti nel menu.</small>
       </div>
       <div class="mb-3">
         <label>IVA (%)</label>
@@ -151,29 +164,72 @@
       <div class="mb-3 recurrence-range">
         <label>Fino a (mese/anno)</label>
         <input type="month" name="recurrence_end" class="form-control">
+        <small class="text-muted">Vuoto = ricorrenza senza scadenza, calcolata fino a dicembre dell'anno corrente.</small>
       </div>
       <script>
         (function(){
           const sel = document.querySelector('select[name="recurrence"]');
+          const dateInput = document.querySelector('input[name="date"]');
+          const startInput = document.querySelector('input[name="recurrence_start"]');
+          const endInput = document.querySelector('input[name="recurrence_end"]');
           const rangeElems = document.querySelectorAll('.recurrence-range');
+          const startLabel = startInput ? startInput.closest('.mb-3').querySelector('label') : null;
+          const endLabel = endInput ? endInput.closest('.mb-3').querySelector('label') : null;
+
+          function setInputMode(input, yearly){
+            if(!input){
+              return;
+            }
+            if(yearly){
+              if(input.value && input.value.includes('-')){
+                input.value = input.value.slice(0, 4);
+              }
+              input.type = 'number';
+              input.min = 2000;
+              input.max = 3000;
+              return;
+            }
+            if(input.value && /^\d{4}$/.test(input.value)){
+              input.value = `${input.value}-01`;
+            }
+            input.type = 'month';
+            input.removeAttribute('min');
+            input.removeAttribute('max');
+          }
+
+          function maybeDefaultStart(yearly){
+            if(!startInput || startInput.value || !dateInput || !dateInput.value){
+              return;
+            }
+            startInput.value = yearly ? dateInput.value.slice(0, 4) : dateInput.value.slice(0, 7);
+          }
+
           function update(){
             const show = sel && sel.value !== 'none';
             const yearly = sel && sel.value === 'yearly';
             rangeElems.forEach(e=>{
               e.style.display = show ? 'block' : 'none';
-              const inp = e.querySelector('input');
-              const lbl = e.querySelector('label');
-              if(inp){
-                if(yearly){ inp.type='number'; inp.min=2000; inp.max=3000; }
-                else { inp.type='month'; inp.removeAttribute('min'); inp.removeAttribute('max'); }
-              }
-              if(lbl){
-                if(yearly){ lbl.textContent = lbl.textContent.replace('mese/anno','anno'); }
-                else { lbl.textContent = lbl.textContent.replace('anno','mese/anno'); }
+            });
+            setInputMode(startInput, yearly);
+            setInputMode(endInput, yearly);
+            if(startLabel){
+              startLabel.textContent = yearly ? 'Da (anno)' : 'Da (mese/anno)';
+            }
+            if(endLabel){
+              endLabel.textContent = yearly ? 'Fino a (anno)' : 'Fino a (mese/anno)';
+            }
+            if(show){
+              maybeDefaultStart(yearly);
+            }
+          }
+          if(sel){ sel.addEventListener('change', update); update(); }
+          if(dateInput){
+            dateInput.addEventListener('change', ()=>{
+              if(sel && sel.value !== 'none'){
+                maybeDefaultStart(sel.value === 'yearly');
               }
             });
           }
-          if(sel){ sel.addEventListener('change', update); update(); }
         })();
       </script>
       <div class="mb-3">
@@ -185,16 +241,20 @@
         <button class="btn btn-primary">Aggiungi entrata</button>
       </div>
       </form>
+    <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="incomeAddAttachmentUploadForm">
+      <input type="hidden" name="next" value="{{ income_upload_return }}">
     </form>
+    {% if not create_mode %}
     <ul class="list-group mt-3">
       {% for e in incomes %}
+      {% set row_attachments = ((attachments_by_income.get(e.id) or []) if attachments_by_income else []) %}
       <li id="income-row-{{ e.id }}" class="list-group-item d-flex justify-content-between align-items-center{% if focus_income_id is defined and focus_income_id == e.id %} list-group-item-warning{% endif %}">
         <div class="form-check me-3 d-none multi-select-checkbox">
           <input class="form-check-input sel-income" type="checkbox" value="{{ e.id }}" id="selIncome-{{ e.id }}">
         </div>
         <div>
           <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }})</div>
-          <small class="text-muted">{{ e.notes or ('#' ~ e.id) }}{% if e.cleaning_emoji %} <a href="/cleaning?apartment_id={{ e.apartment_id }}&income_id={{ e.id }}&date={{ e.date }}&next={{ (next if next is defined and next else '/money/incomes')|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ e.cleaning_emoji }}</a>{% endif %}</small>
+          <small class="text-muted">{{ e.notes or ('#' ~ e.id) }}{% if e.recurrence %} 🗘{% endif %}{% if e.cleaning_emoji %} <a href="/cleaning?apartment_id={{ e.apartment_id }}&income_id={{ e.id }}&date={{ e.date }}&next={{ (next if next is defined and next else '/money/incomes')|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ e.cleaning_emoji }}</a>{% endif %}{% if row_attachments %} <button type="button" class="btn btn-link btn-sm text-decoration-none align-baseline p-0 ms-1" data-bs-toggle="modal" data-bs-target="#incomeAttachmentsModal-{{ e.id }}" title="Apri allegati" aria-label="Apri allegati">📎</button>{% endif %}</small>
         </div>
         <span>
           {% if request.session.get('role') == 'admin' %}
@@ -202,6 +262,28 @@
           {% endif %}
         </span>
       </li>
+      {% if row_attachments %}
+        <div class="modal fade" id="incomeAttachmentsModal-{{ e.id }}" tabindex="-1" aria-labelledby="incomeAttachmentsLabel-{{ e.id }}" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="incomeAttachmentsLabel-{{ e.id }}">Allegati Entrata {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+              </div>
+              <div class="modal-body">
+                <ul class="list-unstyled mb-0">
+                  {% for a in row_attachments %}
+                    <li class="mb-2">{{ attachment_ui.action_row(a, income_list_return, False) }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endif %}
       {% else %}
       <li class="list-group-item">Nessuna entrata</li>
       {% endfor %}
@@ -211,13 +293,14 @@
           <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                   <div class="modal-header">
-                    <h5 class="modal-title">Dettagli Entrata {{ e.notes if e.notes else ('#' ~ e.id) }}</h5>
+                    <h5 class="modal-title">Dettagli Entrata {{ e.notes if e.notes else ('#' ~ e.id) }}{% if e.recurrence %} 🗘{% endif %}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
               </div>
               <div class="modal-body">
                 <p><strong>Data:</strong> {{ e.date|format_date }}</p>
                 {% if e.recurrence %}
-                  <p><strong>Ricorrenza:</strong> da {{ e.recurrence.start_date|format_date }}{% if e.recurrence.end_date %} a {{ e.recurrence.end_date|format_date }}{% endif %}</p>
+                  {% set recurrence_label = 'Mensile' if e.recurrence.type == 'monthly' else 'Annuale' if e.recurrence.type == 'yearly' else 'Ricorrente' %}
+                  <p><strong>Ricorrenza:</strong> {{ recurrence_label }}, da {{ e.recurrence.start_date|format_date }}{% if e.recurrence.end_date %} a {{ e.recurrence.end_date|format_date }}{% else %}, senza scadenza (calcolata fino all'anno corrente){% endif %}</p>
                 {% endif %}
                 <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(e.gross_amount) }}</p>
                 <p><strong>Importo netto:</strong> €{{ '%.2f'|format(e.net_amount) }}</p>
@@ -228,9 +311,9 @@
                 {% endif %}
                 <p><strong>Note:</strong> {{ e.notes or '-' }}{% if e.cleaning_emoji %} <a href="/cleaning?apartment_id={{ e.apartment_id }}&income_id={{ e.id }}&date={{ e.date }}&next={{ (next if next is defined and next else '/money/incomes')|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ e.cleaning_emoji }}</a>{% endif %}</p>
                 <p><strong>Allegati:</strong></p>
-                <ul>
-                  {% for a in (attachments_by_income.get(e.id) if attachments_by_income else []) %}
-                    <li><a href="/attachments/download/{{ a.id }}" target="_blank">{{ a.filename }}</a></li>
+                <ul class="list-unstyled mb-0">
+                  {% for a in ((attachments_by_income.get(e.id) or []) if attachments_by_income else []) %}
+                    <li class="mb-2">{{ attachment_ui.action_row(a, income_list_return, request.session.get('role') == 'admin') }}</li>
                   {% else %}
                     <li>Nessun allegato</li>
                   {% endfor %}
@@ -266,6 +349,7 @@
         {% endif %}
       {% endfor %}
     </ul>
+    {% endif %}
   </div>
 </div>
 
@@ -459,6 +543,10 @@ document.addEventListener('DOMContentLoaded', function(){
   const bulkEditIds = document.getElementById('bulkEditIncomeIds');
   const bulkDeleteIds = document.getElementById('bulkDeleteIncomeIds');
   const bulkEditConfirm = document.getElementById('bulkEditConfirm');
+
+  if (!bulkEditBtn || !bulkDeleteBtn || !selectAll || !bulkEditCount || !bulkDeleteCount || !bulkEditIds || !bulkDeleteIds || !bulkEditConfirm) {
+    return;
+  }
 
   function updateSelectionUI(show){
     document.querySelectorAll('.multi-select-checkbox').forEach(el => el.classList.toggle('d-none', !show));

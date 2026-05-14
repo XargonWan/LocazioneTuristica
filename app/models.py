@@ -114,6 +114,7 @@ class Expense(Base):
     associated_pm_id = Column(Integer, ForeignKey("property_manager.id"), nullable=True)
     associated_company_id = Column(Integer, ForeignKey("company.id"), nullable=True)
     recurrence_id = Column(Integer, ForeignKey("recurrence.id"), nullable=True)
+    orig_recurrence_id = Column(Integer, ForeignKey("recurrence.id"), nullable=True)
     notes = Column(Text, nullable=True)
     created_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -122,7 +123,8 @@ class Expense(Base):
     apartment = relationship("Apartment")
     associated_pm = relationship("PropertyManager")
     associated_company = relationship("Company")
-    recurrence = relationship("Recurrence")
+    recurrence = relationship("Recurrence", foreign_keys=[recurrence_id])
+    orig_recurrence = relationship("Recurrence", foreign_keys=[orig_recurrence_id])
 
 
 class Income(Base):
@@ -138,6 +140,7 @@ class Income(Base):
     pm_amount = Column(DECIMAL(10, 2), default=0.0)
     net_after_pm = Column(DECIMAL(10, 2), default=0.0)
     recurrence_id = Column(Integer, ForeignKey("recurrence.id"), nullable=True)
+    orig_recurrence_id = Column(Integer, ForeignKey("recurrence.id"), nullable=True)
     associated_pm_id = Column(Integer, ForeignKey("property_manager.id"), nullable=True)
     notes = Column(Text, nullable=True)
     created_by = Column(String, nullable=True)
@@ -147,7 +150,8 @@ class Income(Base):
     apartment = relationship("Apartment")
     platform = relationship("Platform")
     associated_pm = relationship("PropertyManager")
-    recurrence = relationship("Recurrence")
+    recurrence = relationship("Recurrence", foreign_keys=[recurrence_id])
+    orig_recurrence = relationship("Recurrence", foreign_keys=[orig_recurrence_id])
 
 
 class CleaningService(Base):

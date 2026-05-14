@@ -21,6 +21,9 @@ def create_default_settings(session):
     if not session.query(Settings).filter_by(key="max_upload_size").first():
         s2 = Settings(key="max_upload_size", value=str(10 * 1024 * 1024))
         session.add(s2)
+    if not session.query(Settings).filter_by(key="backup_auto_retention").first():
+        s3 = Settings(key="backup_auto_retention", value="7")
+        session.add(s3)
     session.commit()
 
 
