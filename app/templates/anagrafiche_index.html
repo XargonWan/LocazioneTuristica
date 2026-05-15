@@ -34,7 +34,7 @@
                 </div>
               </div>
                 <div class="text-end me-2">
-                  <small class="text-muted">Versato PM (anno): <strong>€{{ '%.2f'|format(pm_totals.get(pm.id, 0.0)) }}</strong></small>
+                  <small class="text-muted">Residuo PM da pagare (anno): <strong>€{{ '%.2f'|format(pm_totals.get(pm.id, 0.0)) }}</strong></small>
                 </div>
                 <span>
                 {% if request.session.get('role') == 'admin' %}

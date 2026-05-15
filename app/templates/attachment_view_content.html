@@ -1,0 +1,36 @@
+<div class="attachment-preview-panel">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div class="min-width-0">
+      <h1 class="h4 mb-1 text-break">{{ attachment.filename }}</h1>
+      <div class="text-muted">
+        {{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}
+      </div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if show_back %}
+      <a class="btn btn-secondary" href="{{ next_url }}">Indietro</a>
+      {% endif %}
+      <a class="attachment-action-icon" href="/attachments/download/{{ attachment.id }}" title="Scarica" aria-label="Scarica">📥</a>
+      {% if request.session.get('role') == 'admin' %}
+      <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <button class="attachment-action-icon attachment-action-icon-danger attachment-action-icon-button" type="submit" title="Elimina" aria-label="Elimina" onclick="return confirm('Eliminare questo allegato?');">🗑️</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      {% if preview_available and preview_kind == 'image' %}
+      <img src="/attachments/{{ attachment.id }}/inline?next={{ next_url|urlencode }}" alt="{{ attachment.filename }}" class="img-fluid rounded border">
+      {% elif preview_available and preview_kind == 'pdf' %}
+      <iframe src="/attachments/{{ attachment.id }}/inline?next={{ next_url|urlencode }}" title="{{ attachment.filename }}" class="attachment-preview-frame w-100 border rounded"></iframe>
+      {% elif not file_exists %}
+      <div class="alert alert-warning mb-0">Il file non e presente sul disco. Puoi comunque tornare indietro o cancellare il record allegato.</div>
+      {% else %}
+      <div class="alert alert-secondary mb-0">Anteprima non disponibile per questo tipo di file. Usa Scarica per aprirlo con un'applicazione compatibile.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>

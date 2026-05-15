@@ -17,6 +17,64 @@ if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 PREVIEW_IMAGE_TYPES = {"image/jpeg", "image/png"}
+ALLOWED_ATTACHMENT_TYPES = [
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'application/vnd.oasis.opendocument.text',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]
+
+
+class AttachmentUploadValidationError(Exception):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def attachment_upload_max_size() -> int:
+    return int(get_setting('max_upload_size', str(10 * 1024 * 1024)))
+
+
+async def collect_uploaded_attachment_payloads(files: list[UploadFile] | None):
+    uploaded_files = []
+    for uploaded_file in files or []:
+        if not uploaded_file.filename:
+            continue
+        content = await uploaded_file.read()
+        if uploaded_file.content_type not in ALLOWED_ATTACHMENT_TYPES:
+            raise AttachmentUploadValidationError(
+                'invalid_type',
+                f"Tipo file non valido per {uploaded_file.filename}",
+            )
+        if len(content) > attachment_upload_max_size():
+            raise AttachmentUploadValidationError(
+                'oversize',
+                f"File troppo grande: {uploaded_file.filename}",
+            )
+        uploaded_files.append((uploaded_file.filename, content, uploaded_file.content_type))
+    return uploaded_files
+
+
+def persist_uploaded_attachments(db, uploaded_files, expense_id: int = None, income_id: int = None):
+    created = []
+    for filename, content, content_type in uploaded_files:
+        path = os.path.join(UPLOAD_DIR, filename)
+        with open(path, "wb") as file_handle:
+            file_handle.write(content)
+        attachment = Attachment(
+            filename=filename,
+            disk_path=path,
+            mimetype=content_type,
+            size=len(content),
+            expense_id=expense_id,
+            income_id=income_id,
+        )
+        db.add(attachment)
+        created.append(attachment)
+    return created
 
 
 def _get_attachment(db, attachment_id: int):
@@ -79,18 +137,10 @@ async def upload(
     income_id: int = Form(None),
     user=Depends(admin_required),
 ):
-    max_size = int(get_setting('max_upload_size', str(10 * 1024 * 1024)))
-    allowed = ['application/pdf', 'image/jpeg', 'image/png', 'application/vnd.oasis.opendocument.text', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
-    uploaded_files = []
-    for uploaded_file in files:
-        if not uploaded_file.filename:
-            continue
-        content = await uploaded_file.read()
-        if uploaded_file.content_type not in allowed:
-            return RedirectResponse(url="/attachments?error=invalid_type", status_code=HTTP_303_SEE_OTHER)
-        if len(content) > max_size:
-            return RedirectResponse(url="/attachments?error=oversize", status_code=HTTP_303_SEE_OTHER)
-        uploaded_files.append((uploaded_file.filename, content, uploaded_file.content_type))
+    try:
+        uploaded_files = await collect_uploaded_attachment_payloads(files)
+    except AttachmentUploadValidationError as exc:
+        return RedirectResponse(url=f"/attachments?error={exc.code}", status_code=HTTP_303_SEE_OTHER)
     if not uploaded_files:
         return RedirectResponse(url=(next or "/attachments"), status_code=HTTP_303_SEE_OTHER)
     db = SessionLocal()
@@ -101,19 +151,7 @@ async def upload(
             target_expense_id = expense_id
         if income_id and db.query(Income.id).filter(Income.id == income_id).first():
             target_income_id = income_id
-        for filename, content, content_type in uploaded_files:
-            path = os.path.join(UPLOAD_DIR, filename)
-            with open(path, "wb") as f:
-                f.write(content)
-            attachment = Attachment(
-                filename=filename,
-                disk_path=path,
-                mimetype=content_type,
-                size=len(content),
-                expense_id=target_expense_id,
-                income_id=target_income_id,
-            )
-            db.add(attachment)
+        persist_uploaded_attachments(db, uploaded_files, expense_id=target_expense_id, income_id=target_income_id)
         db.commit()
         return RedirectResponse(url=(next or "/attachments"), status_code=HTTP_303_SEE_OTHER)
     finally:
@@ -133,9 +171,10 @@ async def view_attachment(request: Request, attachment_id: int):
         preview_kind = _attachment_preview_kind(attachment)
         preview_available = bool(file_exists and preview_kind is not None)
         next_url = _attachment_request_next(request, attachment)
+        template_name = 'attachment_view_fragment.html' if request.query_params.get('fragment') == '1' else 'attachment_view.html'
         return templates.TemplateResponse(
             request,
-            'attachment_view.html',
+            template_name,
             {
                 "attachment": attachment,
                 "next_url": next_url,

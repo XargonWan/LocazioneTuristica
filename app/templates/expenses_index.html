@@ -24,7 +24,7 @@
       </div>
     </div>
     {% endif %}
-    <form method="post" action="/money/expenses/add" id="expenseAddForm">
+    <form method="post" action="/money/expenses/add" id="expenseAddForm" enctype="multipart/form-data">
       <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
         <label>Data</label>
@@ -68,10 +68,9 @@
           {% endfor %}
         </select>
         <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
-          <input type="file" name="file" id="expense_add_attachment_file" class="form-control" form="expenseAddAttachmentUploadForm" multiple required>
-          <button class="btn btn-outline-secondary" type="submit" form="expenseAddAttachmentUploadForm">Carica nuovo allegato</button>
+          <input type="file" name="file" id="expense_add_attachment_file" class="form-control" multiple>
         </div>
-        <small class="text-muted">Qui compaiono solo i documenti non ancora associati. Per l'archivio completo usa Documenti nel menu.</small>
+        <small class="text-muted">Qui compaiono solo i documenti non ancora associati. I file scelti qui verranno caricati solo quando premi Aggiungi spesa. Per l'archivio completo usa Documenti nel menu.</small>
       </div>
       <div class="mb-3">
         <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm"> Pagamento a (PM)</label>
@@ -190,9 +189,6 @@
         <a class="btn btn-secondary" href="{{ next if next is defined and next else '/money/expenses' }}">Annulla</a>
         <button class="btn btn-primary">Aggiungi spesa</button>
       </div>
-    </form>
-    <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="expenseAddAttachmentUploadForm">
-      <input type="hidden" name="next" value="{{ expense_upload_return }}">
     </form>
     <div class="modal fade" id="cleaningCompanyModal" tabindex="-1" aria-labelledby="cleaningCompanyModalLabel" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">

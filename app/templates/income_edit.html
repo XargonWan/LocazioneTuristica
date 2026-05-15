@@ -26,7 +26,7 @@
           </div>
         </div>
         {% endif %}
-        <form method="post" action="/money/incomes/{{ income.id }}/edit">
+        <form method="post" action="/money/incomes/{{ income.id }}/edit" id="incomeEditForm" enctype="multipart/form-data">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <div class="mb-3">
             <label>Data</label>
@@ -208,6 +208,8 @@
             </div>
           </div>
           {% endif %}
+        </form>
+
           <div class="mb-3">
             <label>Allegati</label>
             <ul class="list-unstyled mb-0">
@@ -218,18 +220,12 @@
               {% endfor %}
             </ul>
             <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
-              <input type="file" name="file" id="income_edit_attachment_file" class="form-control" form="incomeEditAttachmentUploadForm" required multiple>
-              <button class="btn btn-outline-secondary btn-sm" type="submit" form="incomeEditAttachmentUploadForm">Carica allegati</button>
+              <input type="file" name="file" id="income_edit_attachment_file" class="form-control" form="incomeEditForm" multiple>
             </div>
-            <small class="text-muted">Puoi selezionare piu file insieme.</small>
+            <small class="text-muted">Puoi selezionare piu file insieme. I file scelti verranno caricati solo quando premi Salva.</small>
           </div>
-          <button class="btn btn-primary" type="submit">Salva</button>
+          <button class="btn btn-primary" type="submit" form="incomeEditForm">Salva</button>
           <a class="btn btn-secondary ms-2" href="{{ next if next is defined and next else '/money/incomes' }}">Annulla</a>
-        </form>
-        <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="incomeEditAttachmentUploadForm">
-          <input type="hidden" name="next" value="{{ income_upload_return }}">
-          <input type="hidden" name="income_id" value="{{ income.id }}">
-        </form>
         <form method="post" action="/money/incomes/{{ income.id }}/delete" class="mt-2">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <button class="btn btn-danger" type="submit">Elimina</button>

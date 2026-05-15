@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Form, Depends, HTTPException
+from fastapi import APIRouter, Request, Form, Depends, HTTPException, UploadFile, File
 from typing import List
 from urllib.parse import urlencode
 from fastapi.templating import Jinja2Templates
@@ -32,6 +32,39 @@ def _build_route_url(path: str, **params) -> str:
     if not clean_params:
         return path
     return f"{path}?{urlencode(clean_params)}"
+
+
+async def _collect_uploaded_attachment_payloads(files: list[UploadFile] | None):
+    from app.routers.attachments import AttachmentUploadValidationError, collect_uploaded_attachment_payloads
+
+    try:
+        return await collect_uploaded_attachment_payloads(files)
+    except AttachmentUploadValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
+
+def _attach_existing_attachments(db, attachment_ids: List[int] = None, expense_id: int = None, income_id: int = None):
+    if not attachment_ids:
+        return
+    for attachment_id in attachment_ids:
+        attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
+        if not attachment:
+            continue
+        if expense_id is not None:
+            attachment.expense_id = expense_id
+            attachment.income_id = None
+        if income_id is not None:
+            attachment.income_id = income_id
+            attachment.expense_id = None
+        db.add(attachment)
+
+
+def _persist_uploaded_attachment_payloads(db, uploaded_files, expense_id: int = None, income_id: int = None):
+    if not uploaded_files:
+        return
+    from app.routers.attachments import persist_uploaded_attachments
+
+    persist_uploaded_attachments(db, uploaded_files, expense_id=expense_id, income_id=income_id)
 
 
 def _find_recurrence_for_date(db, entry_date):
@@ -333,10 +366,11 @@ async def expenses_index(request: Request):
 
 
 @router.post("/expenses/add")
-async def add_expense(request: Request, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), notes: str = Form(''), next: str = Form(None), user=Depends(admin_required)):
+async def add_expense(request: Request, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
+        uploaded_files = await _collect_uploaded_attachment_payloads(files)
         try:
             resolved_gross_amount, resolved_net_amount = _resolve_expense_amounts(gross_amount, vat_percent, net_amount)
         except ValueError as exc:
@@ -361,15 +395,12 @@ async def add_expense(request: Request, gross_amount: float = Form(None), net_am
         )
         db.add(e)
         db.commit()
-        if attachment_ids:
-            for aid in attachment_ids:
-                a = db.query(Attachment).filter(Attachment.id == aid).first()
-                if a:
-                    a.expense_id = e.id
-                    db.add(a)
-            db.commit()
         if recurrence_record:
             _sync_expense_recurrence(db, recurrence_record, e, reset=True)
+        _attach_existing_attachments(db, attachment_ids, expense_id=e.id)
+        _persist_uploaded_attachment_payloads(db, uploaded_files, expense_id=e.id)
+        if attachment_ids or uploaded_files:
+            db.commit()
         if next:
             return RedirectResponse(url=next, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url="/money/expenses", status_code=HTTP_303_SEE_OTHER)
@@ -403,7 +434,7 @@ async def edit_expense_get(request: Request, expense_id: int):
         db.close()
 
 @router.api_route('/expenses/{expense_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), associate_pm: str = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), next: str = Form(None), user=Depends(admin_required)):
+async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), associate_pm: str = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -411,6 +442,7 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
         if not e:
             return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
         form = await request.form()
+        uploaded_files = await _collect_uploaded_attachment_payloads(files)
         recurrence = (form.get('recurrence') if form else None) or recurrence
         orig_recur = ((form.get('orig_recurrence_id') if form else None) or e.orig_recurrence_id)
         rejoin_recurrence = form.get('rejoin_recurrence') if form else None
@@ -501,6 +533,9 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
             db.commit()
             if created_recurrence:
                 _sync_expense_recurrence(db, created_recurrence, e, reset=True)
+        _persist_uploaded_attachment_payloads(db, uploaded_files, expense_id=e.id)
+        if uploaded_files:
+            db.commit()
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
@@ -689,10 +724,11 @@ async def incomes_index(request: Request):
 
 
 @router.post("/incomes/add")
-async def add_income(request: Request, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), notes: str = Form(''), user=Depends(admin_required)):
+async def add_income(request: Request, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
+        uploaded_files = await _collect_uploaded_attachment_payloads(files)
         resolved_pm_id, resolved_pm_percent = _resolve_income_pm(db, apartment_id, associated_pm_id, associate_pm, pm_percent)
         recurrence_record = _create_recurrence(db, recurrence, recurrence_start, recurrence_end, date, notes=notes)
         e = Income(recurrence_id=(recurrence_record.id if recurrence_record else None))
@@ -709,17 +745,13 @@ async def add_income(request: Request, gross_amount: float = Form(...), vat_perc
         )
         db.add(e)
         db.commit()
-        if attachment_ids:
-            for aid in attachment_ids:
-                a = db.query(Attachment).filter(Attachment.id == aid).first()
-                if a:
-                    a.income_id = e.id
-                    db.add(a)
-            db.commit()
         if recurrence_record:
             _sync_income_recurrence(db, recurrence_record, e, reset=True)
-        form = await request.form()
-        next_url = form.get('next') if form else None
+        _attach_existing_attachments(db, attachment_ids, income_id=e.id)
+        _persist_uploaded_attachment_payloads(db, uploaded_files, income_id=e.id)
+        if attachment_ids or uploaded_files:
+            db.commit()
+        next_url = next
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url="/money/incomes", status_code=HTTP_303_SEE_OTHER)
@@ -753,7 +785,7 @@ async def edit_income_get(request: Request, income_id: int):
         db.close()
 
 @router.api_route('/incomes/{income_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associate_pm: str = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), user=Depends(admin_required)):
+async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associate_pm: str = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -761,6 +793,7 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
         if not e:
             return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
         form = await request.form()
+        uploaded_files = await _collect_uploaded_attachment_payloads(files)
         recurrence = (form.get('recurrence') if form else None) or recurrence
         orig_recur = ((form.get('orig_recurrence_id') if form else None) or e.orig_recurrence_id)
         rejoin_recurrence = form.get('rejoin_recurrence') if form else None
@@ -842,6 +875,9 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
             db.commit()
             if created_recurrence:
                 _sync_income_recurrence(db, created_recurrence, e, reset=True)
+        _persist_uploaded_attachment_payloads(db, uploaded_files, income_id=e.id)
+        if uploaded_files:
+            db.commit()
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)

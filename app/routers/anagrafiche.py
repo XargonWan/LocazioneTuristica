@@ -11,7 +11,7 @@ from app.models import CleaningService
 from app.models import Income, Expense
 from datetime import datetime
 from app.debug import log_request_form
-from app.utils import expand_open_recurrences_to_current_year
+from app.utils import expand_open_recurrences_to_current_year, get_pm_payment_settlement_amount
 
 router = APIRouter(prefix="/anagrafiche")
 from app.main import templates
@@ -71,6 +71,16 @@ async def index(request: Request):
                     pm_pct = float(pm.percent or 0.0)
                     pm_amount = float(inc.gross_amount or 0.0) * (pm_pct / 100.0)
             pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
+        expenses = db.query(Expense).all()
+        for exp in expenses:
+            try:
+                d = datetime.strptime(exp.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            if d.year != year:
+                continue
+            if exp.associated_pm_id:
+                pm_totals[exp.associated_pm_id] = pm_totals.get(exp.associated_pm_id, 0.0) - get_pm_payment_settlement_amount(exp)
         next_url = _request_path_with_query(request)
         return templates.TemplateResponse(request, "anagrafiche_index.html", {"pms": pms, "apts": apts, "companies": companies, "platforms": platforms, "pm_totals": pm_totals, "next": next_url})
     finally:
@@ -172,7 +182,7 @@ async def edit_pm_get(request: Request, pm_id: int):
             if d.year != year:
                 continue
             if exp.associated_pm_id == pm.id:
-                pm_total -= float(exp.gross_amount or 0.0)
+                pm_total -= get_pm_payment_settlement_amount(exp)
         return templates.TemplateResponse(request, 'pm_edit.html', {"pm": pm, "apartments": apartments, "pms": pms, "pm_total": pm_total, "next": next_url})
     finally:
         db.close()

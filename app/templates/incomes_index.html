@@ -24,7 +24,7 @@
       </div>
     </div>
     {% endif %}
-    <form method="post" action="/money/incomes/add">
+    <form method="post" action="/money/incomes/add" enctype="multipart/form-data">
       <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
       <div class="mb-3">
         <label>Data</label>
@@ -69,10 +69,9 @@
           {% endfor %}
         </select>
         <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
-          <input type="file" name="file" id="income_add_attachment_file" class="form-control" form="incomeAddAttachmentUploadForm" multiple required>
-          <button class="btn btn-outline-secondary" type="submit" form="incomeAddAttachmentUploadForm">Carica nuovo allegato</button>
+          <input type="file" name="file" id="income_add_attachment_file" class="form-control" multiple>
         </div>
-        <small class="text-muted">Qui compaiono solo i documenti non ancora associati. Per l'archivio completo usa Documenti nel menu.</small>
+        <small class="text-muted">Qui compaiono solo i documenti non ancora associati. I file scelti qui verranno caricati solo quando premi Aggiungi entrata. Per l'archivio completo usa Documenti nel menu.</small>
       </div>
       <div class="mb-3">
         <label>IVA (%)</label>
@@ -241,9 +240,6 @@
         <button class="btn btn-primary">Aggiungi entrata</button>
       </div>
       </form>
-    <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="incomeAddAttachmentUploadForm">
-      <input type="hidden" name="next" value="{{ income_upload_return }}">
-    </form>
     {% if not create_mode %}
     <ul class="list-group mt-3">
       {% for e in incomes %}

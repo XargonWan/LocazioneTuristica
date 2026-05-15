@@ -127,6 +127,14 @@ def test_settings_users_attachments_templates_preserve_next():
     assert '/attachments/5/view?next=' in attachments_rendered
     assert '/attachments/download/5' in attachments_rendered
     assert '/attachments/5/delete' in attachments_rendered
+    assert 'title="Visualizza"' in attachments_rendered
+    assert 'title="Scarica"' in attachments_rendered
+    assert 'title="Elimina"' in attachments_rendered
+    assert 'title="contratto.pdf"' in attachments_rendered
+    assert 'attachment-action-name' in attachments_rendered
+    assert 'attachment-view-trigger' in attachments_rendered
+    assert '🗑️' in attachments_rendered
+    assert 'id="attachmentViewerModal"' in attachments_rendered
     assert 'Associato a spesa del 01/01/2025: Assicurazione / Casa 1' in attachments_rendered
     assert '/money/expenses/12/edit?next=' in attachments_rendered
 
@@ -145,6 +153,9 @@ def test_attachment_view_template_renders_preview_and_actions():
     assert '/attachments/7/inline' in rendered
     assert '/attachments/download/7' in rendered
     assert '/attachments/7/delete' in rendered
+    assert 'title="Elimina"' in rendered
+    assert '🗑️' in rendered
+    assert 'attachment-preview-frame' in rendered
 
 
 def test_cleaning_templates_render():
@@ -202,9 +213,10 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'list-group-item-warning' in rendered
     assert 'const focusIncomeId = 1;' in rendered
     assert 'bootstrap.Modal.getOrCreateInstance' in rendered
-    assert 'id="incomeAddAttachmentUploadForm"' in rendered
-    assert 'form="incomeAddAttachmentUploadForm"' in rendered
-    assert 'Carica nuovo allegato' in rendered
+    assert 'id="income_add_attachment_file"' in rendered
+    assert 'enctype="multipart/form-data"' in rendered
+    assert 'I file scelti qui verranno caricati solo quando premi Aggiungi entrata.' in rendered
+    assert 'Carica nuovo allegato' not in rendered
     # edit toggles should not appear when next parameter is used (add-from-overview)
     assert 'id="editModeToggleExp"' not in rendered
     assert 'id="editModeToggle"' not in rendered
@@ -226,6 +238,8 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert '/attachments/301/view?next=' in rendered3
     assert '/attachments/download/301' in rendered3
     assert '/attachments/301/delete' in rendered3
+    assert 'attachment-view-trigger' in rendered3
+    assert '🗑️' in rendered3
     fake_open_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':None})
     fake_inc_open = type('X', (), {'id': 3,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':10.0,'associated_pm_name':'PM One','notes':'Aperta','recurrence': fake_open_r, 'cleaning_emoji': ''})
     rendered_open = templates.env.get_template('incomes_index.html').render(request=R(), incomes=[fake_inc_open], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
@@ -307,9 +321,10 @@ def test_expenses_template_title_and_delete_modal():
     assert 'dateInput.value.slice(0, 7)' in rendered
     # PM association checkbox exists
     assert 'id="associate_pm_checkbox"' in rendered
-    assert 'id="expenseAddAttachmentUploadForm"' in rendered
-    assert 'form="expenseAddAttachmentUploadForm"' in rendered
-    assert 'Carica nuovo allegato' in rendered
+    assert 'id="expense_add_attachment_file"' in rendered
+    assert 'enctype="multipart/form-data"' in rendered
+    assert 'I file scelti qui verranno caricati solo quando premi Aggiungi spesa.' in rendered
+    assert 'Carica nuovo allegato' not in rendered
     # cleaning checkbox should also be on add form
     assert 'name="is_cleaning"' in rendered
     # fake an expense with recurrence property in modal to test details display
@@ -327,6 +342,8 @@ def test_expenses_template_title_and_delete_modal():
     assert '/attachments/401/view?next=' in rendered2
     assert '/attachments/download/401' in rendered2
     assert '/attachments/401/delete' in rendered2
+    assert 'attachment-view-trigger' in rendered2
+    assert '🗑️' in rendered2
     fake_open_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':None})
     fake_e_open = type('X', (), {'id': 12,'date':'2025-01-01','gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':0.0,'pm_amount':0.0,'net_after_pm':78.0,'associated_pm_name':None,'notes':'Assicurazione','recurrence': fake_open_r})
     rendered_open_exp = templates.env.get_template('expenses_index.html').render(request=R(), expenses=[fake_e_open], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
@@ -351,13 +368,22 @@ def test_expenses_template_title_and_delete_modal():
     assert "Puoi inserire il lordo o il netto" in edit_html
     assert 'setupExpenseAmountSync' in edit_html
     assert "net / vatFactor" in edit_html
-    assert 'id="expenseEditAttachmentUploadForm"' in edit_html
-    assert 'name="expense_id" value="77"' in edit_html
-    assert 'Carica allegati' in edit_html
+    assert 'enctype="multipart/form-data"' in edit_html
+    assert 'id="expense_edit_attachment_file"' in edit_html
+    assert 'form="expenseEditForm"' in edit_html
+    assert 'I file scelti verranno caricati solo quando premi Salva.' in edit_html
+    assert 'Carica allegati' not in edit_html
     assert 'multiple' in edit_html
+    assert 'type="submit" form="expenseEditForm">Salva</button>' in edit_html
+    expense_form_start = edit_html.index('id="expenseEditForm"')
+    expense_form_close = edit_html.index('</form>', expense_form_start)
+    expense_attachment_delete = edit_html.index('/attachments/401/delete')
+    assert expense_form_close < expense_attachment_delete
     assert '/attachments/401/view?next=' in edit_html
     assert '/attachments/download/401' in edit_html
     assert '/attachments/401/delete' in edit_html
+    assert 'title="Elimina"' in edit_html
+    assert '🗑️' in edit_html
     assert 'id="apply_series"' not in edit_html
 
 
@@ -599,11 +625,20 @@ def test_income_edit_prefill_and_hidden_orig():
     assert 'name="rejoin_recurrence"' in html
     assert 'Falla rientrare nella serie' in html
     assert 'Serie originaria:' in html
-    assert 'id="incomeEditAttachmentUploadForm"' in html
-    assert 'name="income_id" value="88"' in html
-    assert 'Carica allegati' in html
+    assert 'enctype="multipart/form-data"' in html
+    assert 'id="income_edit_attachment_file"' in html
+    assert 'form="incomeEditForm"' in html
+    assert 'I file scelti verranno caricati solo quando premi Salva.' in html
+    assert 'Carica allegati' not in html
     assert 'multiple' in html
+    assert 'type="submit" form="incomeEditForm">Salva</button>' in html
+    income_form_start = html.index('id="incomeEditForm"')
+    income_form_close = html.index('</form>', income_form_start)
+    income_attachment_delete = html.index('/attachments/501/delete')
+    assert income_form_close < income_attachment_delete
     assert '/attachments/501/view?next=' in html
     assert '/attachments/download/501' in html
     assert '/attachments/501/delete' in html
+    assert 'title="Elimina"' in html
+    assert '🗑️' in html
     assert 'id="apply_series"' not in html

@@ -257,6 +257,87 @@ html[data-theme="dark"] img, body.dark img, html[data-theme="dark"] svg, body.da
 /* Ensure list-group uses dark background */
 html[data-theme="dark"] .list-group-item, body.dark .list-group-item { background-color: var(--card-bg) !important; color: var(--text) !important; }
 
+.attachment-action-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.attachment-action-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.attachment-action-name,
+.attachment-action-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.attachment-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: none;
+  line-height: 1;
+}
+
+.attachment-action-icon-button {
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.attachment-action-icon-danger {
+  color: #dc3545;
+  border-color: rgba(220, 53, 69, 0.35);
+}
+
+.attachment-action-icon:hover {
+  background: rgba(13, 110, 253, 0.08);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.attachment-action-icon-danger:hover {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+}
+
+.attachment-preview-frame {
+  min-height: 75vh;
+}
+
+html[data-theme="dark"] .attachment-action-icon,
+body.dark .attachment-action-icon,
+body[data-theme="dark"] .attachment-action-icon {
+  border-color: #4a4f52;
+}
+
+html[data-theme="dark"] .attachment-action-icon:hover,
+body.dark .attachment-action-icon:hover,
+body[data-theme="dark"] .attachment-action-icon:hover {
+  background: rgba(62, 162, 255, 0.14);
+}
+
 /* Tables */
 html[data-theme="dark"] table.table, body.dark table.table { background: transparent; color: var(--text); }
 html[data-theme="dark"] table.table thead th, body.dark table.table thead th { background-color: var(--card-bg) !important; color: var(--text) !important; }

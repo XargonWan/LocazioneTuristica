@@ -47,12 +47,12 @@
     </div>
     <div id="stats-totals" class="mb-3 d-flex flex-wrap gap-3 align-items-start">
       <div><strong title="Entrate nette del filtro corrente, gia al netto dell'IVA e della quota PM.">Totale Entrate (netto, IVA/PM esclusi):</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
-      <div><strong title="Spese registrate nel filtro corrente, inclusi eventuali pagamenti fatti ai PM che qui restano conteggiati nel totale spese.">Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
-      <div><strong title="Quanto hai effettivamente gia versato ai PM nel filtro corrente tramite spese associate a un PM.">Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
-      <div><strong title="Quota PM maturata sulle entrate del filtro corrente ma non ancora versata.">PM da versare:</strong> <span id="stats-pm-due" class="text-warning">€0.00</span></div>
+      <div><strong title="Spese registrate nel filtro corrente, incluse le uscite lorde per eventuali pagamenti fatti ai PM.">Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
+      <div><strong title="Quanto risulta gia versato ai PM nel filtro corrente, calcolato sul netto delle spese associate a un PM. Le spese restano comunque conteggiate al lordo.">Versato ai PM (netto):</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
+      <div><strong title="Quota PM maturata sulle entrate del filtro corrente e non ancora coperta dai pagamenti PM, conteggiati al netto.">PM da versare:</strong> <span id="stats-pm-due" class="text-warning">€0.00</span></div>
       <div class="w-100"></div>
-      <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate nette prima del PM meno spese non PM meno PM gia versato. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span id="stats-grand-real" class="net-zero">€0.00</span></div>
-      <div><strong class="text-decoration-underline" title="Saldo virtuale del filtro corrente ipotizzando di aver gia versato tutto il PM ancora dovuto.">Gran totale virtuale:</strong> <span id="stats-grand-virtual" class="net-zero">€0.00</span></div>
+      <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate nette prima del PM meno spese non PM meno esborso lordo dei pagamenti PM. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span id="stats-grand-real" class="net-zero">€0.00</span></div>
+      <div><strong class="text-decoration-underline" title="Saldo virtuale del filtro corrente ipotizzando di aver gia regolato tutto il PM ancora dovuto.">Gran totale virtuale:</strong> <span id="stats-grand-virtual" class="net-zero">€0.00</span></div>
     </div>
     <canvas id="monthly-chart"></canvas>
   </div>

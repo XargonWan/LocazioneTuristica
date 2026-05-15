@@ -26,7 +26,7 @@
           </div>
         </div>
         {% endif %}
-        <form method="post" action="/money/expenses/{{ expense.id }}/edit" id="expenseEditForm">
+        <form method="post" action="/money/expenses/{{ expense.id }}/edit" id="expenseEditForm" enctype="multipart/form-data">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <div class="mb-3">
             <label>Data</label>
@@ -223,6 +223,8 @@
             </div>
           </div>
           {% endif %}
+        </form>
+
           <div class="mb-3">
             <label>Allegati</label>
             <ul class="list-unstyled mb-0">
@@ -233,18 +235,12 @@
               {% endfor %}
             </ul>
             <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
-              <input type="file" name="file" id="expense_edit_attachment_file" class="form-control" form="expenseEditAttachmentUploadForm" required multiple>
-              <button class="btn btn-outline-secondary btn-sm" type="submit" form="expenseEditAttachmentUploadForm">Carica allegati</button>
+              <input type="file" name="file" id="expense_edit_attachment_file" class="form-control" form="expenseEditForm" multiple>
             </div>
-            <small class="text-muted">Puoi selezionare piu file insieme.</small>
+            <small class="text-muted">Puoi selezionare piu file insieme. I file scelti verranno caricati solo quando premi Salva.</small>
           </div>
-          <button class="btn btn-primary" type="submit">Salva</button>
-          <a class="btn btn-secondary ms-2" href="/money/expenses">Annulla</a>
-        </form>
-        <form method="post" action="/attachments/upload" enctype="multipart/form-data" id="expenseEditAttachmentUploadForm">
-          <input type="hidden" name="next" value="{{ expense_upload_return }}">
-          <input type="hidden" name="expense_id" value="{{ expense.id }}">
-        </form>
+          <button class="btn btn-primary" type="submit" form="expenseEditForm">Salva</button>
+          <a class="btn btn-secondary ms-2" href="{{ next if next is defined and next else '/money/expenses' }}">Annulla</a>
         <form method="post" action="/money/expenses/{{ expense.id }}/delete" class="mt-2">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <button class="btn btn-danger" type="submit">Elimina</button>

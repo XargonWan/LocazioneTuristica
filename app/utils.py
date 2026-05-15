@@ -27,6 +27,29 @@ def format_date_value(value):
     return parsed_value.strftime(DATE_FORMAT) if parsed_value else None
 
 
+def get_expense_net_amount(entry):
+    gross_amount = float(getattr(entry, 'gross_amount', 0.0) or 0.0)
+    raw_net_amount = getattr(entry, 'net_amount', None)
+    if raw_net_amount not in (None, ''):
+        net_amount = float(raw_net_amount or 0.0)
+        if net_amount or not gross_amount:
+            return round(net_amount, 2)
+    vat_percent = float(getattr(entry, 'vat_percent', 0.0) or 0.0)
+    return round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+
+
+def get_pm_payment_settlement_amount(entry):
+    if not getattr(entry, 'associated_pm_id', None):
+        return 0.0
+    return get_expense_net_amount(entry)
+
+
+def get_pm_payment_cash_amount(entry):
+    if not getattr(entry, 'associated_pm_id', None):
+        return 0.0
+    return round(float(getattr(entry, 'gross_amount', 0.0) or 0.0), 2)
+
+
 def normalize_recurrence_date(value):
     return format_date_value(value)
 

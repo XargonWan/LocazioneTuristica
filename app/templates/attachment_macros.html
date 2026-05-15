@@ -1,18 +1,22 @@
 {% macro action_row(attachment, next_url, is_admin=False, show_meta=False) -%}
-<div class="d-flex flex-wrap gap-2 align-items-center">
-  <span class="fw-semibold">{{ attachment.filename }}</span>
-  {% if show_meta %}
-  <span class="text-muted small">
-    {{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}
-  </span>
-  {% endif %}
-  <a class="btn btn-sm btn-outline-primary" href="/attachments/{{ attachment.id }}/view?next={{ next_url|urlencode }}">View</a>
-  <a class="btn btn-sm btn-outline-secondary" href="/attachments/download/{{ attachment.id }}">Download</a>
-  {% if is_admin %}
-  <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
-    <input type="hidden" name="next" value="{{ next_url }}">
-    <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Eliminare questo allegato?');">Delete</button>
-  </form>
-  {% endif %}
+<div class="attachment-action-row">
+  <div class="attachment-action-main">
+    <div class="attachment-action-name fw-semibold" title="{{ attachment.filename }}">{{ attachment.filename }}</div>
+    {% if show_meta %}
+    <div class="attachment-action-meta text-muted small" title="{{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}">
+      {{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="attachment-action-buttons">
+    <a class="attachment-action-icon attachment-view-trigger" href="/attachments/{{ attachment.id }}/view?next={{ next_url|urlencode }}" title="Visualizza" aria-label="Visualizza">🔍</a>
+    <a class="attachment-action-icon" href="/attachments/download/{{ attachment.id }}" title="Scarica" aria-label="Scarica">📥</a>
+    {% if is_admin %}
+    <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button class="attachment-action-icon attachment-action-icon-danger attachment-action-icon-button" type="submit" title="Elimina" aria-label="Elimina" onclick="return confirm('Eliminare questo allegato?');">🗑️</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 {%- endmacro %}

@@ -333,6 +333,13 @@ def test_attachment_view_renders_pdf_preview_and_inline_content():
         assert f'/attachments/{attachment.id}/inline' in response.text
         assert f'/attachments/download/{attachment.id}' in response.text
         assert f'/attachments/{attachment.id}/delete' in response.text
+        assert 'title="Elimina"' in response.text
+        assert '🗑️' in response.text
+
+        fragment_response = client.get(f'/attachments/{attachment.id}/view?next=/overview?year=2025&fragment=1')
+        assert fragment_response.status_code == 200
+        assert 'attachment-preview-panel' in fragment_response.text
+        assert '<!doctype html>' not in fragment_response.text.lower()
 
         inline_response = client.get(f'/attachments/{attachment.id}/inline', follow_redirects=False)
         assert inline_response.status_code == 200
@@ -388,6 +395,198 @@ def test_attachment_delete_uses_attachment_context_and_removes_file():
     finally:
         if expense is not None:
             db.query(Expense).filter(Expense.id == expense.id).delete()
+        db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_add_expense_uploads_new_files_on_submit():
+    db = SessionLocal()
+    expense = None
+    attachment = None
+    file_path = None
+    try:
+        create_admin(db)
+        client = TestClient(app)
+        login_admin(client)
+
+        filename = f'add-expense-submit-{uuid.uuid4().hex[:8]}.pdf'
+        response = client.post(
+            '/money/expenses/add',
+            data={
+                'date': '2025-04-01',
+                'gross_amount': '80.00',
+                'vat_percent': '22.0',
+                'notes': f'add-expense-submit-{uuid.uuid4().hex[:8]}',
+                'next': '/overview?year=2025',
+            },
+            files={'file': (filename, b'%PDF-1.4\n%expense-submit\n', 'application/pdf')},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == '/overview?year=2025'
+        expense = db.query(Expense).filter(Expense.notes.like('add-expense-submit-%')).order_by(Expense.id.desc()).first()
+        assert expense is not None
+        attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
+        assert attachment is not None
+        assert attachment.expense_id == expense.id
+        file_path = attachment.disk_path
+        assert os.path.exists(file_path)
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+        if expense is not None:
+            db.query(Expense).filter(Expense.id == expense.id).delete()
+        db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_edit_expense_uploads_new_files_on_submit():
+    db = SessionLocal()
+    expense = None
+    attachment = None
+    file_path = None
+    try:
+        create_admin(db)
+        expense = Expense(date='2025-05-01', gross_amount=10.0, net_amount=7.8, vat_percent=22.0, notes=f'edit-expense-submit-{uuid.uuid4().hex[:8]}')
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        filename = f'edit-expense-submit-{uuid.uuid4().hex[:8]}.pdf'
+        response = client.post(
+            f'/money/expenses/{expense.id}/edit',
+            data={
+                'date': '2025-05-02',
+                'gross_amount': '19.22',
+                'vat_percent': '22.0',
+                'notes': expense.notes,
+                'recurrence': 'none',
+                'apply_to': 'single',
+                'next': '/overview?year=2025',
+            },
+            files={'file': (filename, b'%PDF-1.4\n%expense-edit-submit\n', 'application/pdf')},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == '/overview?year=2025'
+        db.refresh(expense)
+        assert expense.date == '2025-05-02'
+        attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
+        assert attachment is not None
+        assert attachment.expense_id == expense.id
+        file_path = attachment.disk_path
+        assert os.path.exists(file_path)
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+        if expense is not None:
+            db.query(Expense).filter(Expense.id == expense.id).delete()
+        db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_add_income_uploads_new_files_on_submit():
+    db = SessionLocal()
+    income = None
+    attachment = None
+    file_path = None
+    try:
+        create_admin(db)
+        client = TestClient(app)
+        login_admin(client)
+
+        filename = f'add-income-submit-{uuid.uuid4().hex[:8]}.pdf'
+        response = client.post(
+            '/money/incomes/add',
+            data={
+                'date': '2025-06-01',
+                'gross_amount': '100.00',
+                'vat_percent': '22.0',
+                'pm_percent': '0.0',
+                'notes': f'add-income-submit-{uuid.uuid4().hex[:8]}',
+                'next': '/overview?year=2025',
+            },
+            files={'file': (filename, b'%PDF-1.4\n%income-submit\n', 'application/pdf')},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == '/overview?year=2025'
+        income = db.query(Income).filter(Income.notes.like('add-income-submit-%')).order_by(Income.id.desc()).first()
+        assert income is not None
+        attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
+        assert attachment is not None
+        assert attachment.income_id == income.id
+        file_path = attachment.disk_path
+        assert os.path.exists(file_path)
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+        if income is not None:
+            db.query(Income).filter(Income.id == income.id).delete()
+        db.commit()
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        db.close()
+
+
+def test_edit_income_uploads_new_files_on_submit():
+    db = SessionLocal()
+    income = None
+    attachment = None
+    file_path = None
+    try:
+        create_admin(db)
+        income = Income(date='2025-07-01', gross_amount=50.0, net_amount=39.0, vat_percent=22.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=39.0, notes=f'edit-income-submit-{uuid.uuid4().hex[:8]}')
+        db.add(income)
+        db.commit()
+        db.refresh(income)
+
+        client = TestClient(app)
+        login_admin(client)
+
+        filename = f'edit-income-submit-{uuid.uuid4().hex[:8]}.pdf'
+        response = client.post(
+            f'/money/incomes/{income.id}/edit',
+            data={
+                'date': '2025-07-02',
+                'gross_amount': '55.00',
+                'vat_percent': '22.0',
+                'pm_percent': '0.0',
+                'notes': income.notes,
+                'recurrence': 'none',
+                'apply_to': 'single',
+                'next': '/overview?year=2025',
+            },
+            files={'file': (filename, b'%PDF-1.4\n%income-edit-submit\n', 'application/pdf')},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == '/overview?year=2025'
+        db.refresh(income)
+        assert income.date == '2025-07-02'
+        attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
+        assert attachment is not None
+        assert attachment.income_id == income.id
+        file_path = attachment.disk_path
+        assert os.path.exists(file_path)
+    finally:
+        if attachment is not None:
+            db.query(Attachment).filter(Attachment.id == attachment.id).delete()
+        if income is not None:
+            db.query(Income).filter(Income.id == income.id).delete()
         db.commit()
         if file_path and os.path.exists(file_path):
             os.remove(file_path)

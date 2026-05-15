@@ -217,8 +217,8 @@ def test_overview_page_net_calculation():
         text = resp.text
         # the month total should be net_after_pm income (70) minus gross expense (5) = 65
         assert 'Gennaio - Risultato del mese: <span class="net-total net-positive">€65.00' in text
-        # pm_due initially 10 from income, minus 5 payment = 5
-        assert 'PM ancora da versare: €5.00' in text
+        # pm_due initially 10 from income, minus 3.90 payment net = 6.10
+        assert 'PM ancora da versare: €6.10' in text
     finally:
         # cleanup inserted data
         db.query(Income).filter(Income.id == inc.id).delete()
@@ -278,10 +278,10 @@ def test_overview_page_annual_totals_split_real_and_virtual():
         text = resp.text
         assert 'Entrate nette:</strong> <span>€80.00</span>' in text
         assert 'Spese:</strong> <span>€15.00</span>' in text
-        assert 'PM gia versato:</strong> <span>€6.00</span>' in text
-        assert 'PM ancora da versare:</strong> <span>€4.00</span>' in text
+        assert 'PM gia versato (netto):</strong> <span>€4.68</span>' in text
+        assert 'PM ancora da versare:</strong> <span>€5.32</span>' in text
         assert 'Gran totale reale:</strong> <span class="net-total net-positive">€59.00</span>' in text
-        assert 'Gran totale virtuale:</strong> <span class="net-total net-positive">€55.00</span>' in text
+        assert 'Gran totale virtuale:</strong> <span class="net-total net-positive">€53.68</span>' in text
         assert 'id="overview-table"' not in text
         assert '<th>Mese</th>' not in text
     finally:
@@ -414,7 +414,7 @@ def test_api_stats_monthly_all_years_aggregates_same_month_and_pm_due():
                       vat_percent=0.0, net_amount=30.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=30.0,
                       notes='ops')
         pm_payment = Expense(apartment_id=None, date='2038-02-20', gross_amount=15.0,
-                             vat_percent=0.0, net_amount=15.0, associated_pm_id=pm.id,
+                             vat_percent=22.0, net_amount=11.7, associated_pm_id=pm.id,
                              notes='pm payment')
         db.add_all([inc1, inc2, exp, pm_payment])
         db.commit()
@@ -426,10 +426,10 @@ def test_api_stats_monthly_all_years_aggregates_same_month_and_pm_due():
         assert feb is not None
         assert feb['income'] == 270.0
         assert feb['expense'] == 15.0
-        assert payload['totals']['pm_paid'] == 15.0
-        assert payload['totals']['pm_due'] == 15.0
+        assert payload['totals']['pm_paid'] == 11.7
+        assert payload['totals']['pm_due'] == 18.3
         assert payload['totals']['grand_total_real'] == 285.0
-        assert payload['totals']['grand_total_virtual'] == 270.0
+        assert payload['totals']['grand_total_virtual'] == 266.7
     finally:
         db.query(Income).filter(Income.id.in_([inc1.id, inc2.id])).delete()
         db.query(Expense).filter(Expense.id.in_([exp.id, pm_payment.id])).delete()
@@ -448,18 +448,22 @@ def test_pm_total_subtracts_expense_payments():
                      vat_percent=0.0, net_amount=100.0, pm_percent=10.0, pm_amount=10.0, net_after_pm=90.0,
                      associated_pm_id=pm.id)
         exp = Expense(apartment_id=None, date='2025-03-05', gross_amount=20.0,
-                      vat_percent=0.0, net_amount=20.0, associated_pm_id=pm.id)
+                      vat_percent=22.0, net_amount=15.6, associated_pm_id=pm.id)
         db.add_all([inc, exp]); db.commit()
         # call pm edit view which reports pm_total
         resp = client.get(f'/anagrafiche/property-manager/{pm.id}/edit?year=2025')
         assert resp.status_code == 200
         text = resp.text
-        # pm_total should equal 10 (from income) minus 20 (expense) = -10
-        assert '€-10.00' in text
+        # pm_total should equal 10 (from income) minus 15.60 (expense net) = -5.60
+        assert '€-5.60' in text
         # if we also check stats endpoint, the pm_totals entry should reflect same
         resp2 = client.get('/stats?year=2025')
         assert resp2.status_code == 200
-        assert f'€-10.00' in resp2.text
+        assert f'€-5.6' in resp2.text
+        resp3 = client.get('/anagrafiche?year=2025')
+        assert resp3.status_code == 200
+        assert 'Residuo PM da pagare (anno):' in resp3.text
+        assert f'€-5.60' in resp3.text
     finally:
         db.query(Income).filter(Income.id == inc.id).delete()
         db.query(Expense).filter(Expense.id == exp.id).delete()

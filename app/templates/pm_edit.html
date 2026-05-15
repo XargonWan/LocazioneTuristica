@@ -25,7 +25,7 @@
           <input type="hidden" name="old_percent" value="{{ pm.percent or 0.0 }}">
           {% if pm_total is defined %}
           <div class="mb-2">
-            <small class="text-muted">Totale versato PM (anno corrente): <strong>€{{ '%.2f'|format(pm_total) }}</strong></small>
+            <small class="text-muted">Residuo PM da pagare (anno corrente): <strong>€{{ '%.2f'|format(pm_total) }}</strong></small>
           </div>
           {% endif %}
           <div class="mb-3">
