@@ -360,7 +360,8 @@
         const docTypeInput = document.getElementById('renameAttachmentDocType');
         const notesInput = document.getElementById('renameAttachmentNotes');
         const nextInput = document.getElementById('renameAttachmentNext');
-        if (!form || !filenameInput || !docTypeInput || !notesInput || !nextInput) return;
+        const modalEl = document.getElementById('renameAttachmentModal');
+        if (!form || !filenameInput || !docTypeInput || !notesInput || !nextInput || !modalEl) return;
         const id = btn.getAttribute('data-attachment-id');
         const filename = btn.getAttribute('data-attachment-filename');
         const docType = btn.getAttribute('data-attachment-doc-type');
@@ -371,6 +372,12 @@
         docTypeInput.value = docType || '';
         notesInput.value = notes || '';
         nextInput.value = nextUrl || '';
+        try {
+          const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        } catch(err) {
+          console.debug('rename modal show failed', err);
+        }
       }, true);
 
       document.addEventListener('DOMContentLoaded', function(){
