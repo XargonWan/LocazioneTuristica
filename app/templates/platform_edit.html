@@ -20,6 +20,9 @@
           <button class="btn btn-primary" type="submit">Salva</button>
           <a class="btn btn-secondary" href="{{ return_url }}">Annulla</a>
         </form>
+        <div class="mt-3">
+          <a class="btn btn-outline-info" href="/attachments/by-entity/platform/{{ platform.id }}?next={{ return_url|urlencode }}">Documenti associati</a>
+        </div>
         <form method="post" action="/anagrafiche/platform/{{ platform.id }}/delete" class="mt-2">
           <input type="hidden" name="next" value="{{ return_url }}">
           <button class="btn btn-danger" type="submit">Elimina Piattaforma</button>

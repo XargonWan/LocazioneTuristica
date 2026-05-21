@@ -56,6 +56,10 @@ def init_db():
             ensure_column('income', 'orig_recurrence_id', 'INTEGER REFERENCES recurrence(id)')
             ensure_column('income', 'has_stamp_duty', 'INTEGER DEFAULT 0')
             ensure_column('income', 'stamp_duty_amount', 'DECIMAL(10, 2) DEFAULT 0.0')
+            ensure_column('attachment', 'document_type', 'VARCHAR')
+            ensure_column('attachment', 'notes', 'TEXT')
+            ensure_column('attachment', 'apartment_id', 'INTEGER REFERENCES apartment(id)')
+            ensure_column('attachment', 'property_manager_id', 'INTEGER REFERENCES property_manager(id)')
             cur.execute("PRAGMA table_info(company)")
             cols = [row[1] for row in cur.fetchall()]
             if 'is_cleaning_company' not in cols:

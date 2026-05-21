@@ -4,14 +4,51 @@
       <h1 class="h4 mb-1 text-break">{{ attachment.filename }}</h1>
       <div class="text-muted">
         {{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}
+        {% if attachment.document_type %}
+        <span class="badge bg-info text-dark ms-2">{{ attachment.document_type|capitalize }}</span>
+        {% endif %}
+        {% if attachment.notes %}
+        <span class="ms-2"><i class="bi bi-chat-text"></i> {{ attachment.notes }}</span>
+        {% endif %}
       </div>
+      {% if total_siblings and total_siblings > 1 %}
+      <div class="text-muted small mt-1">
+        Documento {{ current_index + 1 }}/{{ total_siblings }}
+        {% if attachment.expense_id %}
+        (allegati della spesa)
+        {% elif attachment.income_id %}
+        (allegati dell'entrata)
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if total_siblings and total_siblings > 1 %}
+        {% if current_index > 0 %}
+        {% set prev_sibling = siblings[current_index - 1] %}
+        <a class="btn btn-outline-secondary" href="/attachments/{{ prev_sibling.id }}/view?next={{ next_url|urlencode }}" title="Precedente">&larr; Precedente</a>
+        {% else %}
+        <span class="btn btn-outline-secondary disabled">&larr; Precedente</span>
+        {% endif %}
+        {% if current_index < total_siblings - 1 %}
+        {% set next_sibling = siblings[current_index + 1] %}
+        <a class="btn btn-outline-secondary" href="/attachments/{{ next_sibling.id }}/view?next={{ next_url|urlencode }}" title="Successivo">Successivo &rarr;</a>
+        {% else %}
+        <span class="btn btn-outline-secondary disabled">Successivo &rarr;</span>
+        {% endif %}
+      {% endif %}
       {% if show_back %}
       <a class="btn btn-secondary" href="{{ next_url }}">Indietro</a>
       {% endif %}
       <a class="attachment-action-icon" href="/attachments/download/{{ attachment.id }}" title="Scarica" aria-label="Scarica">📥</a>
       {% if request.session.get('role') == 'admin' %}
+      <button type="button" class="attachment-action-icon attachment-rename-trigger"
+        data-attachment-id="{{ attachment.id }}"
+        data-attachment-filename="{{ attachment.filename }}"
+        data-attachment-doc-type="{{ attachment.document_type or '' }}"
+        data-attachment-notes="{{ attachment.notes or '' }}"
+        data-attachment-next="{{ next_url }}"
+        title="Modifica" aria-label="Modifica">✏️</button>
       <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
         <input type="hidden" name="next" value="{{ next_url }}">
         <button class="attachment-action-icon attachment-action-icon-danger attachment-action-icon-button" type="submit" title="Elimina" aria-label="Elimina" onclick="return confirm('Eliminare questo allegato?');">🗑️</button>
@@ -34,3 +71,5 @@
     </div>
   </div>
 </div>
+
+

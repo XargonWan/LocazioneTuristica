@@ -67,6 +67,9 @@
             <button class="btn btn-outline-primary" type="submit">Assegna</button>
           </div>
         </form>
+        <div class="mt-3">
+          <a class="btn btn-outline-info" href="/attachments/by-entity/pm/{{ pm.id }}?next={{ return_url|urlencode }}">Documenti associati</a>
+        </div>
         <form method="post" action="/anagrafiche/property-manager/{{ pm.id }}/delete" class="mt-2">
           <input type="hidden" name="next" value="{{ return_url }}">
           <button class="btn btn-danger" type="submit">Elimina PM</button>

@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% import 'attachment_macros.html' as attachment_ui %}
+{% set return_url = next if next is defined and next else '/attachments' %}
+{% set document_types = [("", "Nessuno"), ("fattura", "Fattura"), ("saldo", "Saldo"), ("acconto", "Acconto"), ("contratto", "Contratto"), ("ricevuta", "Ricevuta"), ("altro", "Altro")] %}
+
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/anagrafiche">Anagrafiche</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Documenti: {{ entity_name }}</li>
+  </ol>
+</nav>
+
+<h1>Documenti associati a {{ entity_name }}</h1>
+
+<div class="card">
+  <div class="card-body">
+    <ul class="list-group mt-3">
+      {% for a in attachments %}
+      <li class="list-group-item">
+        {{ attachment_ui.action_row(a, return_url, request.session.get('role') == 'admin', True) }}
+        <div class="small text-muted mt-2">
+          {% if a.document_type %}
+          <span class="badge bg-info text-dark me-1">{{ a.document_type|capitalize }}</span>
+          {% endif %}
+          {% if a.notes %}
+          <span class="me-2">{{ a.notes }}</span>
+          {% endif %}
+          {% if a.expense %}
+            Spesa del {{ a.expense.date|format_date }}: {{ a.expense.notes or ('#' ~ a.expense.id) }}{% if a.expense.apartment %} / {{ a.expense.apartment.name }}{% endif %}
+          {% elif a.income %}
+            Entrata del {{ a.income.date|format_date }}: {{ a.income.notes or ('#' ~ a.income.id) }}{% if a.income.apartment %} / {{ a.income.apartment.name }}{% endif %}
+          {% endif %}
+        </div>
+      </li>
+      {% else %}
+      <li class="list-group-item">Nessun documento associato a {{ entity_name }}</li>
+      {% endfor %}
+    </ul>
+    <a class="btn btn-secondary mt-3" href="{{ next_url }}">Indietro</a>
+  </div>
+</div>
+
+{% endblock %}

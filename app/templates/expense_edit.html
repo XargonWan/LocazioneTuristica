@@ -243,6 +243,7 @@
             </div>
             <small class="text-muted">Puoi selezionare piu file insieme. I file scelti verranno caricati solo quando premi Salva.</small>
           </div>
+
           <button class="btn btn-primary" type="submit" form="expenseEditForm">Salva</button>
           <a class="btn btn-secondary ms-2" href="{{ next if next is defined and next else '/money/expenses' }}">Annulla</a>
         <form method="post" action="/money/expenses/{{ expense.id }}/delete" class="mt-2">

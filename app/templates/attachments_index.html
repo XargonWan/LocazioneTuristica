@@ -3,41 +3,155 @@
 {% block content %}
 {% import 'attachment_macros.html' as attachment_ui %}
 {% set return_url = next if next is defined and next else '/attachments' %}
+{% set apartments = apartments if apartments is defined else [] %}
+{% set pms = pms if pms is defined else [] %}
+
 <h1>Documenti</h1>
+
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" action="/attachments" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-0">Cerca</label>
+        <input type="text" name="q" class="form-control form-control-sm" placeholder="Nome file" value="{{ filter_q or '' }}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Anno</label>
+        <select name="year" class="form-select form-select-sm">
+          <option value="">Tutti</option>
+          {% for y in available_years %}
+          <option value="{{ y }}" {% if year|string == y|string and not filter_all_years %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+          <option value="all" {% if filter_all_years %}selected{% endif %}>Tutti gli anni</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Tipo</label>
+        <select name="type" class="form-select form-select-sm">
+          <option value="">Tutti</option>
+          <option value="income" {% if type_filter == 'income' %}selected{% endif %}>Entrate</option>
+          <option value="expense" {% if type_filter == 'expense' %}selected{% endif %}>Spese</option>
+          <option value="none" {% if type_filter == 'none' %}selected{% endif %}>Non associati</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Tipo documento</label>
+        <select name="doc_type" class="form-select form-select-sm">
+          <option value="">Tutti</option>
+          {% for val, label in document_types %}
+          {% if val %}
+          <option value="{{ val }}" {% if doc_type == val %}selected{% endif %}>{{ label }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">Filtra</button>
+        {% if filter_q or year or type_filter or doc_type %}
+        <a href="/attachments" class="btn btn-sm btn-outline-secondary">Reset</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Stats bar -->
+<div class="d-flex flex-wrap gap-3 mb-3 text-muted small">
+  <span>Totale documenti: <strong>{{ total_count }}</strong></span>
+  {% for yr, cnt in years_count.items()|sort(reverse=true) %}
+  <span>{{ yr }}: <strong>{{ cnt }}</strong></span>
+  {% endfor %}
+</div>
+
 <div class="card">
   <div class="card-body">
     {% if request.session.get('role') == 'admin' %}
-    <form method="post" action="/attachments/upload" enctype="multipart/form-data">
+    <form method="post" action="/attachments/upload" enctype="multipart/form-data" class="mb-3">
       <input type="hidden" name="next" value="{{ return_url }}">
-      <div class="mb-3">
-        <input type="file" name="file" class="form-control" multiple required>
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-4">
+          <label class="form-label small mb-0">File</label>
+          <input type="file" name="file" class="form-control form-control-sm" multiple required>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-0">Tipo documento</label>
+          <select name="document_type" class="form-select form-select-sm">
+            <option value="">Nessuno</option>
+            {% for val, label in document_types %}
+            {% if val %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-0">Appartamento</label>
+          <select name="apartment_id" class="form-select form-select-sm">
+            <option value="">---</option>
+            {% for a in apartments %}
+            <option value="{{ a.id }}">{{ a.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-0">PM</label>
+          <select name="property_manager_id" class="form-select form-select-sm">
+            <option value="">---</option>
+            {% for pm in pms %}
+            <option value="{{ pm.id }}">{{ pm.first_name }} {{ pm.last_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-0">Note</label>
+          <input type="text" name="notes" class="form-control form-control-sm" placeholder="Note...">
+        </div>
+        <div class="col-auto">
+          <button class="btn btn-primary btn-sm" type="submit">Carica</button>
+        </div>
       </div>
-      <button class="btn btn-primary" type="submit">Carica</button>
     </form>
     {% endif %}
 
-    <ul class="list-group mt-3">
+    <ul class="list-group mt-3" id="attachmentList">
       {% for a in attachments %}
       <li class="list-group-item">
-        {{ attachment_ui.action_row(a, return_url, request.session.get('role') == 'admin', True) }}
-        <div class="small text-muted mt-2">
-          {% if a.expense %}
-            Associato a spesa del {{ a.expense.date|format_date }}: {{ a.expense.notes or ('#' ~ a.expense.id) }}{% if a.expense.apartment %} / {{ a.expense.apartment.name }}{% endif %}
-          {% elif a.income %}
-            Associato a entrata del {{ a.income.date|format_date }}: {{ a.income.notes or ('#' ~ a.income.id) }}{% if a.income.apartment %} / {{ a.income.apartment.name }}{% endif %}
-          {% else %}
-            Non associato a nessuna spesa o entrata
-          {% endif %}
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="flex-grow-1 min-width-0">
+            {{ attachment_ui.action_row(a, return_url, request.session.get('role') == 'admin', True) }}
+            <div class="small text-muted mt-1">
+              {% if a.document_type %}
+              <span class="badge bg-info text-dark me-1">{{ a.document_type|capitalize }}</span>
+              {% endif %}
+              {% if a.notes %}
+              <span class="me-2" title="{{ a.notes }}"><i class="bi bi-chat-text"></i> {{ a.notes }}</span>
+              {% endif %}
+            </div>
+            <div class="small text-muted mt-1">
+              {% if a.expense %}
+                Associato a spesa del {{ a.expense.date|format_date }}: {{ a.expense.notes or ('#' ~ a.expense.id) }}{% if a.expense.apartment %} / {{ a.expense.apartment.name }}{% endif %}
+              {% elif a.income %}
+                Associato a entrata del {{ a.income.date|format_date }}: {{ a.income.notes or ('#' ~ a.income.id) }}{% if a.income.apartment %} / {{ a.income.apartment.name }}{% endif %}
+              {% else %}
+                {% if a.apartment %}<span class="me-2">Appartamento: {{ a.apartment.name }}</span>{% endif %}
+                {% if a.property_manager %}<span class="me-2">PM: {{ a.property_manager.first_name }} {{ a.property_manager.last_name }}</span>{% endif %}
+                {% if not a.apartment and not a.property_manager %}
+                Non associato
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+          <div class="d-flex flex-wrap align-items-center gap-2 ms-2 flex-shrink-0">
+            <a class="btn btn-sm btn-outline-primary" href="/attachments/{{ a.id }}/view?next={{ return_url|urlencode }}">Apri</a>
+            {% if request.session.get('role') == 'admin' %}
+            {% if a.expense %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#expenseModal-{{ a.expense.id }}" title="Dettagli spesa">Dettagli</button>
+            {% elif a.income %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#incomeModal-{{ a.income.id }}" title="Dettagli entrata">Dettagli</button>
+            {% endif %}
+            {% endif %}
+          </div>
         </div>
-        {% if a.expense %}
-        <div class="mt-2">
-          <a class="btn btn-sm btn-outline-secondary" href="/money/expenses/{{ a.expense.id }}/edit?next={{ return_url|urlencode }}">Apri spesa</a>
-        </div>
-        {% elif a.income %}
-        <div class="mt-2">
-          <a class="btn btn-sm btn-outline-secondary" href="/money/incomes/{{ a.income.id }}/edit?next={{ return_url|urlencode }}">Apri entrata</a>
-        </div>
-        {% endif %}
       </li>
       {% else %}
       <li class="list-group-item">Nessun documento</li>
@@ -45,4 +159,63 @@
     </ul>
   </div>
 </div>
+
+<!-- Detail modals for expense/income -->
+{% for a in attachments %}
+{% if a.expense and request.session.get('role') == 'admin' %}
+<div class="modal fade" id="expenseModal-{{ a.expense.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Dettagli Spesa {{ a.expense.notes or ('#' ~ a.expense.id) }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Data:</strong> {{ a.expense.date|format_date }}</p>
+        <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(a.expense.gross_amount) }}</p>
+        <p><strong>Imponibile:</strong> €{{ '%.2f'|format(a.expense.net_amount) }}</p>
+        <p><strong>Note:</strong> {{ a.expense.notes or '-' }}</p>
+        {% if a.expense.apartment %}
+        <p><strong>Appartamento:</strong> {{ a.expense.apartment.name }}</p>
+        {% endif %}
+        {% if a.expense.associated_company %}
+        <p><strong>Ditta:</strong> {{ a.expense.associated_company.company_name }}</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <a class="btn btn-primary" href="/money/expenses/{{ a.expense.id }}/edit?next={{ return_url }}">Modifica</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% elif a.income and request.session.get('role') == 'admin' %}
+<div class="modal fade" id="incomeModal-{{ a.income.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Dettagli Entrata {{ a.income.notes or ('#' ~ a.income.id) }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Data:</strong> {{ a.income.date|format_date }}</p>
+        <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(a.income.gross_amount) }}</p>
+        <p><strong>Imponibile:</strong> €{{ '%.2f'|format(a.income.net_amount) }}</p>
+        <p><strong>Note:</strong> {{ a.income.notes or '-' }}</p>
+        {% if a.income.apartment %}
+        <p><strong>Appartamento:</strong> {{ a.income.apartment.name }}</p>
+        {% endif %}
+        {% if a.income.platform %}
+        <p><strong>Piattaforma:</strong> {{ a.income.platform.name }}</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <a class="btn btn-primary" href="/money/incomes/{{ a.income.id }}/edit?next={{ return_url }}">Modifica</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
 {% endblock %}

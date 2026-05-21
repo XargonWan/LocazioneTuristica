@@ -86,6 +86,48 @@
       </div>
     </div>
 
+    <!-- Global rename attachment modal -->
+    <div class="modal fade" id="renameAttachmentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="" id="renameAttachmentForm">
+            <div class="modal-header">
+              <h5 class="modal-title">Modifica documento</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" name="next" value="" id="renameAttachmentNext">
+              <div class="mb-3">
+                <label>Nome file</label>
+                <input type="text" name="filename" class="form-control" id="renameAttachmentFilename" required>
+              </div>
+              <div class="mb-3">
+                <label>Tipo documento</label>
+                <select name="document_type" class="form-select" id="renameAttachmentDocType">
+                  <option value="">Nessuno</option>
+                  <option value="fattura">Fattura</option>
+                  <option value="saldo">Saldo</option>
+                  <option value="acconto">Acconto</option>
+                  <option value="contratto">Contratto</option>
+                  <option value="ricevuta">Ricevuta</option>
+                  <option value="tassa">Tassa</option>
+                  <option value="altro">Altro</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label>Note</label>
+                <textarea name="notes" class="form-control" rows="2" id="renameAttachmentNotes"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+              <button type="submit" class="btn btn-primary">Salva</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Chart.js for graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -306,6 +348,29 @@
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
         window.openAttachmentViewer(link.href);
+      }, true);
+
+      // Global rename modal handler
+      document.addEventListener('click', function(e){
+        const btn = e.target && e.target.closest ? e.target.closest('.attachment-rename-trigger') : null;
+        if (!btn) return;
+        e.preventDefault();
+        const form = document.getElementById('renameAttachmentForm');
+        const filenameInput = document.getElementById('renameAttachmentFilename');
+        const docTypeInput = document.getElementById('renameAttachmentDocType');
+        const notesInput = document.getElementById('renameAttachmentNotes');
+        const nextInput = document.getElementById('renameAttachmentNext');
+        if (!form || !filenameInput || !docTypeInput || !notesInput || !nextInput) return;
+        const id = btn.getAttribute('data-attachment-id');
+        const filename = btn.getAttribute('data-attachment-filename');
+        const docType = btn.getAttribute('data-attachment-doc-type');
+        const notes = btn.getAttribute('data-attachment-notes');
+        const nextUrl = btn.getAttribute('data-attachment-next');
+        form.action = '/attachments/' + id + '/rename';
+        filenameInput.value = filename || '';
+        docTypeInput.value = docType || '';
+        notesInput.value = notes || '';
+        nextInput.value = nextUrl || '';
       }, true);
 
       document.addEventListener('DOMContentLoaded', function(){

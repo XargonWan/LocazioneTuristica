@@ -210,10 +210,16 @@ class Attachment(Base):
     uploaded_by = Column(String, nullable=True)
     expense_id = Column(Integer, ForeignKey("expense.id"), nullable=True)
     income_id = Column(Integer, ForeignKey("income.id"), nullable=True)
+    apartment_id = Column(Integer, ForeignKey("apartment.id"), nullable=True)
+    property_manager_id = Column(Integer, ForeignKey("property_manager.id"), nullable=True)
+    document_type = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     expense = relationship("Expense")
     income = relationship("Income")
+    apartment = relationship("Apartment")
+    property_manager = relationship("PropertyManager")
 
 
 class Payment(Base):

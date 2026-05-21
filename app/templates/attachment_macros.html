@@ -12,6 +12,13 @@
     <a class="attachment-action-icon attachment-view-trigger" href="/attachments/{{ attachment.id }}/view?next={{ next_url|urlencode }}" title="Visualizza" aria-label="Visualizza">🔍</a>
     <a class="attachment-action-icon" href="/attachments/download/{{ attachment.id }}" title="Scarica" aria-label="Scarica">📥</a>
     {% if is_admin %}
+    <button type="button" class="attachment-action-icon attachment-rename-trigger"
+      data-attachment-id="{{ attachment.id }}"
+      data-attachment-filename="{{ attachment.filename }}"
+      data-attachment-doc-type="{{ attachment.document_type or '' }}"
+      data-attachment-notes="{{ attachment.notes or '' }}"
+      data-attachment-next="{{ next_url }}"
+      title="Modifica" aria-label="Modifica">✏️</button>
     <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
       <input type="hidden" name="next" value="{{ next_url }}">
       <button class="attachment-action-icon attachment-action-icon-danger attachment-action-icon-button" type="submit" title="Elimina" aria-label="Elimina" onclick="return confirm('Eliminare questo allegato?');">🗑️</button>
