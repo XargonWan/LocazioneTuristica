@@ -13,11 +13,40 @@
             <label class="form-label">Nome Ditta</label>
             <input class="form-control" type="text" name="company_name" value="{{ company.company_name }}" required>
           </div>
-          <div class="mb-3 form-check">
-            <input class="form-check-input" type="checkbox" id="companyCleaningFlag" name="is_cleaning_company" value="1" {% if company.is_cleaning_company %}checked{% endif %}>
-            <label class="form-check-label" for="companyCleaningFlag">Ditta di pulizie</label>
+          <div class="mb-3">
+            <label class="form-label">Partita IVA</label>
+            <input class="form-control" type="text" name="vat_number" value="{{ company.vat_number or '' }}">
           </div>
-          <div id="cleaningDefaultsSection" {% if not company.is_cleaning_company %}style="display:none"{% endif %}>
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input class="form-control" type="email" name="email" value="{{ company.email or '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Telefono</label>
+            <input class="form-control" type="text" name="phone" value="{{ company.phone or '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Tipologia</label>
+            <select class="form-select" name="company_type">
+              <option value="">---</option>
+              <option value="Pulizie" {% if company.company_type == 'Pulizie' %}selected{% endif %}>Pulizie</option>
+              <option value="Riparazioni" {% if company.company_type == 'Riparazioni' %}selected{% endif %}>Riparazioni</option>
+              <option value="Installazioni" {% if company.company_type == 'Installazioni' %}selected{% endif %}>Installazioni</option>
+              <option value="Serramentista" {% if company.company_type == 'Serramentista' %}selected{% endif %}>Serramentista</option>
+              <option value="Muratura" {% if company.company_type == 'Muratura' %}selected{% endif %}>Muratura</option>
+              <option value="Idraulico" {% if company.company_type == 'Idraulico' %}selected{% endif %}>Idraulico</option>
+              <option value="Elettricista" {% if company.company_type == 'Elettricista' %}selected{% endif %}>Elettricista</option>
+              <option value="Giardiniere" {% if company.company_type == 'Giardiniere' %}selected{% endif %}>Giardiniere</option>
+              <option value="Commercialista" {% if company.company_type == 'Commercialista' %}selected{% endif %}>Commercialista</option>
+              <option value="Telefonia e Internet" {% if company.company_type == 'Telefonia e Internet' %}selected{% endif %}>Telefonia e Internet</option>
+              <option value="Assicurazione" {% if company.company_type == 'Assicurazione' %}selected{% endif %}>Assicurazione</option>
+              <option value="Ente Statale" {% if company.company_type == 'Ente Statale' %}selected{% endif %}>Ente Statale</option>
+              <option value="Utenze" {% if company.company_type == 'Utenze' %}selected{% endif %}>Utenze</option>
+              <option value="Servizio generico" {% if company.company_type == 'Servizio generico' %}selected{% endif %}>Servizio generico</option>
+              <option value="Altro" {% if company.company_type == 'Altro' %}selected{% endif %}>Altro</option>
+            </select>
+          </div>
+          <div id="cleaningDefaultsSection" {% if company.company_type != 'Pulizie' %}style="display:none"{% endif %}>
             <div class="mb-3">
               <label class="form-label">Costo standard lordo (€)</label>
               <input class="form-control" type="number" step="0.01" min="0" name="default_gross_amount" value="{{ '%.2f'|format(company.default_gross_amount) if company.default_gross_amount is not none else '' }}">
@@ -32,11 +61,11 @@
         </form>
         <script>
           (function(){
-            const cb = document.getElementById('companyCleaningFlag');
+            const sel = document.querySelector('select[name="company_type"]');
             const section = document.getElementById('cleaningDefaultsSection');
-            if(cb && section){
-              cb.addEventListener('change', () => {
-                section.style.display = cb.checked ? '' : 'none';
+            if(sel && section){
+              sel.addEventListener('change', () => {
+                section.style.display = sel.value === 'Pulizie' ? '' : 'none';
               });
             }
           })();

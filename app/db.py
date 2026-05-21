@@ -63,6 +63,10 @@ def init_db():
                     cur.execute("ALTER TABLE company ADD COLUMN is_cleaning_company INTEGER DEFAULT 0;")
                 except Exception:
                     pass
+            ensure_column('company', 'vat_number', 'VARCHAR')
+            ensure_column('company', 'email', 'VARCHAR')
+            ensure_column('company', 'phone', 'VARCHAR')
+            ensure_column('company', 'company_type', 'VARCHAR')
             cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cleaning'")
             if cur.fetchone():
                 cur.execute("PRAGMA table_info(cleaning)")

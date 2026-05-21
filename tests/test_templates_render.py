@@ -50,12 +50,10 @@ def test_stats_template_shows_pm_and_company_labels():
 
 
 def test_company_cleaning_checkbox_and_badge():
-    # ensure add form includes checkbox and list shows badge for cleaning companies
-    # render index with one normal and one cleaning company
-    comp1 = type('C', (), {'id':1,'company_name':'Normale','is_cleaning_company':False})
-    comp2 = type('C', (), {'id':2,'company_name':'Pulizie','is_cleaning_company':True})
+    # ensure list shows badge for cleaning companies (via company_type or is_cleaning_company)
+    comp1 = type('C', (), {'id':1,'company_name':'Normale','is_cleaning_company':False, 'company_type':None, 'vat_number':None, 'email':None, 'phone':None})
+    comp2 = type('C', (), {'id':2,'company_name':'Pulizie','is_cleaning_company':True, 'company_type':None, 'vat_number':None, 'email':None, 'phone':None})
     rendered = templates.env.get_template("anagrafiche_index.html").render(request=R(), pms=[], apts=[], companies=[comp1, comp2], platforms=[], pm_totals={})
-    assert 'name="is_cleaning_company"' in rendered
     assert 'Pulizie' in rendered
     assert 'badge' in rendered and 'Pulizie' in rendered
 

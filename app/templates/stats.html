@@ -82,7 +82,7 @@
           {% for c in companies %}
             <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('company-select').value='{{ c.id }}'; reloadSelections();">
               <div>{{ c.company_name }}</div>
-              <div><span class="badge bg-secondary">€{{ (company_totals[c.id] if c.id in company_totals else 0)|float|round(2) }}</span></div>
+              <div><span class="badge bg-info text-dark">€{{ (company_totals[c.id] if c.id in company_totals else 0)|float|round(2) }}</span></div>
             </li>
           {% else %}
             <li class="list-group-item">Nessuna azienda</li>

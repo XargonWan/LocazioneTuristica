@@ -55,6 +55,10 @@ class Company(Base):
     # standard cleaning cost pre-filled in cleaning forms
     default_gross_amount = Column(DECIMAL(10, 2), nullable=True)
     default_net_amount = Column(DECIMAL(10, 2), nullable=True)
+    vat_number = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    company_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

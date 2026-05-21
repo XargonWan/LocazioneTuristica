@@ -2,7 +2,7 @@
 
 {% block content %}
 {% import 'attachment_macros.html' as attachment_ui %}
-{% set return_url = '/overview?year=' ~ year %}
+{% set return_url = current_return_url if current_return_url is defined else '/overview?year=' ~ year %}
 {% set attachments_by_income = attachments_by_income if attachments_by_income is defined else {} %}
 {% set attachments_by_expense = attachments_by_expense if attachments_by_expense is defined else {} %}
 {% macro pm_due_markup(amount) -%}
@@ -13,18 +13,22 @@
 {%- endmacro %}
 <div class="d-flex justify-content-between align-items-center">
   <h1 class="mb-0">
-    {# previous year arrow only if there is data for one before #}
-    {% if prev_year %}
-      <a href="/overview?year={{ prev_year }}" class="btn btn-link p-0 me-2" title="Anno precedente">&larr;</a>
+    {% if filter_all_years %}
+      Rendiconto (Tutti gli anni)
     {% else %}
-      <span class="btn btn-link disabled p-0 me-2" aria-disabled="true">&larr;</span>
-    {% endif %}
-    Rendiconto {{ year }}
-    {# next year arrow only if there is data for a later year #}
-    {% if next_year %}
-      <a href="/overview?year={{ next_year }}" class="btn btn-link p-0 ms-2" title="Anno successivo">&rarr;</a>
-    {% else %}
-      <span class="btn btn-link disabled p-0 ms-2" aria-disabled="true">&rarr;</span>
+      {% set p_yr_url = prev_year_url if prev_year_url is defined else ('/overview?year=' ~ prev_year) if prev_year else None %}
+      {% set n_yr_url = next_year_url if next_year_url is defined else ('/overview?year=' ~ next_year) if next_year else None %}
+      {% if p_yr_url %}
+        <a href="{{ p_yr_url }}" class="btn btn-link p-0 me-2" title="Anno precedente">&larr;</a>
+      {% else %}
+        <span class="btn btn-link disabled p-0 me-2" aria-disabled="true">&larr;</span>
+      {% endif %}
+      Rendiconto {{ year }}
+      {% if n_yr_url %}
+        <a href="{{ n_yr_url }}" class="btn btn-link p-0 ms-2" title="Anno successivo">&rarr;</a>
+      {% else %}
+        <span class="btn btn-link disabled p-0 ms-2" aria-disabled="true">&rarr;</span>
+      {% endif %}
     {% endif %}
   </h1>
     <div>
@@ -39,21 +43,73 @@
   window.overviewAvailableYears = {{ available_years | tojson }};
 </script>
 {% endif %}
-{% if request.session.get('role') == 'admin' %}
-<div class="d-flex gap-2 my-2">
-  <button id="editModeToggleOv" class="btn btn-outline-primary btn-sm" onclick="toggleEditMode('overview')">Modifica...</button>
-  <button id="bulkEditOvBtn" class="btn btn-sm btn-secondary d-none" data-bs-toggle="modal" data-bs-target="#bulkEditOvModal">Modifica selezionate</button>
-  <button id="bulkDeleteOvBtn" class="btn btn-sm btn-danger d-none">Elimina selezionate</button>
-  <label class="ms-auto">Seleziona tutto <input type="checkbox" id="selectAllOv" class="form-check-input ms-1 d-none"></label>
+
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" action="/overview" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-0">Cerca</label>
+        <input type="text" name="q" class="form-control form-control-sm" placeholder="Nome / causale" value="{{ filter_q or '' }}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Compagnia</label>
+        <input type="text" name="company" class="form-control form-control-sm" placeholder="Compagnia / PM" value="{{ filter_company or '' }}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">PM</label>
+        <select name="pm_id" class="form-select form-select-sm">
+          <option value="">Tutti</option>
+          {% for pm in pms %}
+          <option value="{{ pm.id }}" {% if filter_pm_id == pm.id %}selected{% endif %}>{{ pm.first_name }} {{ pm.last_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Tipo</label>
+        <select name="type" class="form-select form-select-sm">
+          <option value="">Tutti</option>
+          <option value="income" {% if filter_type == 'income' %}selected{% endif %}>Entrate</option>
+          <option value="expense" {% if filter_type == 'expense' %}selected{% endif %}>Spese</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Anno</label>
+        <select name="year" class="form-select form-select-sm">
+          {% for y in available_years %}
+          <option value="{{ y }}" {% if y == year and not filter_all_years %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+          <option value="all" {% if filter_all_years %}selected{% endif %}>Tutti gli anni</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">Filtra</button>
+        {% if filter_active %}
+        <a href="/overview" class="btn btn-sm btn-outline-secondary">Reset</a>
+        {% endif %}
+      </div>
+      <div class="col-auto ms-auto">
+        <button type="button" id="toggleRecurringBtn" class="btn btn-sm btn-outline-secondary" title="Nascondi/mostra le voci ricorsive (i calcoli non cambiano)"><i class="bi bi-arrow-repeat me-1"></i>Nascondi ricorrenti</button>
+      </div>
+    </form>
+  </div>
 </div>
-{% endif %}
-<p>Benvenuto nella tua dashboard. Qui mostreremo i grafici e il riepilogo per appartamento, anno e mese.</p>
+
 <div class="row">
   <div class="col-12 overview-main-column">
     <div class="card mb-3">
       <div class="card-body">
                     <div class="card-body">
-                      <h5>Riepilogo anno {{ year }}</h5>
+                      <div class="d-flex justify-content-between align-items-center">
+                        <h5>Riepilogo{% if filter_all_years %} (Tutti gli anni){% else %} anno {{ year }}{% endif %}{% if filter_active %} <span class="text-warning fw-bold">FILTRATO</span>{% endif %}</h5>
+                        {% if request.session.get('role') == 'admin' %}
+                        <div>
+                          <button id="bulkEditOvBtn" class="btn btn-sm btn-secondary d-none" data-bs-toggle="modal" data-bs-target="#bulkEditOvModal">Modifica selezionate</button>
+                          <button id="bulkDeleteOvBtn" class="btn btn-sm btn-danger d-none">Elimina selezionate</button>
+                          <label class="d-none" id="selectAllOvLabel">Seleziona tutto <input type="checkbox" id="selectAllOv" class="form-check-input ms-1"></label>
+                          <button id="editModeToggleOv" class="btn btn-outline-primary btn-sm" onclick="toggleEditMode('overview')">Modifica...</button>
+                        </div>
+                        {% endif %}
+                      </div>
                       <ul class="list-group">
                         {% for m in months %}
                         <li class="list-group-item">
@@ -69,8 +125,8 @@
                               {% endif %}
                                 <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - Risultato del mese: <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
                               <div>
-                                  <small class="text-success">Incassi disponibili: €{{ '%.2f'|format(m.income) }}</small>
-                                  <small class="text-danger ms-3">Spese lorde: €{{ '%.2f'|format(m.expense) }}</small>
+                                {% if m.income %}<small class="text-success">Incassi disponibili: €{{ '%.2f'|format(m.income) }}</small>{% endif %}
+                                {% if m.expense %}<small class="text-danger {% if m.income %}ms-3{% endif %}">Spese lorde: €{{ '%.2f'|format(m.expense) }}</small>{% endif %}
                                 {{ pm_due_markup(m.pm_due) }}
                               </div>
                            </div>
@@ -85,24 +141,26 @@
                            <div>
                              <div class="table-responsive">
                                <table class="table table-sm mb-0">
-                                 <thead>
-                                   <tr>
-                                     <th scope="col"></th>
-                                     <th scope="col">Causale</th>
-                                     <th scope="col">Data</th>
-                                     <th scope="col" class="text-end">Importo</th>
-                                     <th scope="col">&nbsp;</th>
-                                   </tr>
-                                 </thead>
+                                  <thead>
+                                    <tr>
+                                      <th scope="col"></th>
+                                      <th scope="col">Causale</th>
+                                      <th scope="col">Riferimento</th>
+                                      <th scope="col">Data</th>
+                                      <th scope="col" class="text-end">Importo</th>
+                                      <th scope="col" class="text-end">&nbsp;</th>
+                                    </tr>
+                                  </thead>
                                  <tbody>
                                     {% for item in entries_by_month[m.month] %}
                                         {% set row_attachments = ((attachments_by_income.get(item.id) or []) if item.type == 'income' else ((attachments_by_expense.get(item.id) or []) if attachments_by_expense else [])) %}
-                                        <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}">
+                                        <tr class="{% if item.type == 'income' %}entry-income{% else %}entry-expense{% endif %}{% if item.recurrence_label %} entry-recurring{% endif %}">
                                           <td class="align-middle"><input type="checkbox" class="form-check-input sel-ov d-none" value="{{ item.id }}" data-type="{{ item.type }}"></td>
-                                          <td>
-                                            {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}{% if item.recurrence_label %} 🗘{% endif %}{% if item.type == 'income' and item.cleaning_emoji %} <a href="/cleaning?apartment_id={{ item.apartment_id }}&income_id={{ item.id }}&date={{ item.raw_date }}&next={{ return_url|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ item.cleaning_emoji }}</a>{% endif %}{% if row_attachments %} <button type="button" class="btn btn-link btn-sm text-decoration-none align-baseline p-0 ms-1" data-bs-toggle="modal" data-bs-target="#ovAttachmentModal-{{ item.type }}-{{ item.id }}" title="Apri allegati" aria-label="Apri allegati">📎</button>{% endif %}
-                                          </td>
-                                          <td>{{ item.date|format_date }}</td>
+                                           <td>
+                                             {{ item.notes or ('Entrata' if item.type == 'income' else 'Spesa') }}{% if item.recurrence_label %} 🗘{% endif %}{% if item.type == 'income' and item.cleaning_emoji %} <a href="/cleaning?apartment_id={{ item.apartment_id }}&income_id={{ item.id }}&date={{ item.raw_date }}&next={{ return_url|urlencode }}" class="text-decoration-none" title="Registra una pulizia per questa entrata">{{ item.cleaning_emoji }}</a>{% endif %}{% if row_attachments %} <button type="button" class="btn btn-link btn-sm text-decoration-none align-baseline p-0 ms-1" data-bs-toggle="modal" data-bs-target="#ovAttachmentModal-{{ item.type }}-{{ item.id }}" title="Apri allegati" aria-label="Apri allegati">📎</button>{% endif %}
+                                           </td>
+                                           <td>{% if item.type == 'income' %}{{ item.platform_name or item.associated_pm_name or '' }}{% else %}{{ item.company_name or item.associated_pm_name or '' }}{% endif %}</td>
+                                           <td>{{ item.date|format_date }}</td>
                                           <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
                                           <td class="text-end">
                                             {% if request.session.get('role') == 'admin' %}
@@ -199,24 +257,23 @@
                         <h5 class="modal-title">Dettagli Spesa {{ item.notes if item.notes else ('#' ~ item.id) }}{% if item.recurrence_label %} 🗘{% endif %}</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
                       </div>
-                            <div class="modal-body">
-                              <p><strong>Data:</strong> {{ item.date|format_date }}</p>
-                              {% if item.recurrence_label %}
-                                <p><strong>Ricorrenza:</strong> {{ item.recurrence_label }}, da {{ item.recurrence_start|format_date }}{% if item.recurrence_end %} a {{ item.recurrence_end|format_date }}{% else %}, senza scadenza (calcolata fino all'anno corrente){% endif %}</p>
-                              {% endif %}
-                              <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
-                              {% if item.type == 'income' and item.net_amount is defined %}
-                                <p><strong>Imponibile:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
-                              {% endif %}
-                              <p><strong>Piattaforma:</strong> {{ item.platform_name or '-' }}</p>
-                              <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
-                              {% if item.associated_pm_name %}
-                                <p><strong>Associata a (PM):</strong> {{ item.associated_pm_name }}</p>
-                                <p><strong>Percentuale PM:</strong> {{ (item.pm_percent if item.pm_percent is not none else 0) }}%</p>
-                                <p><strong>PM amount:</strong> €{{ '%.2f'|format(item.pm_amount if item.pm_amount is not none else 0.0) }}</p>
-                                <p><strong>Netto dopo PM:</strong> €{{ '%.2f'|format(item.net_after_pm if item.net_after_pm is not none else 0.0) }}</p>
-                              {% endif %}
-                            </div>
+                             <div class="modal-body">
+                               <p><strong>Data:</strong> {{ item.date|format_date }}</p>
+                               {% if item.recurrence_label %}
+                                 <p><strong>Ricorrenza:</strong> {{ item.recurrence_label }}, da {{ item.recurrence_start|format_date }}{% if item.recurrence_end %} a {{ item.recurrence_end|format_date }}{% else %}, senza scadenza (calcolata fino all'anno corrente){% endif %}</p>
+                               {% endif %}
+                               <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
+                               {% if item.company_name %}
+                                 <p><strong>Ditta:</strong> {{ item.company_name }}</p>
+                               {% endif %}
+                               {% if item.platform_name %}
+                                 <p><strong>Piattaforma:</strong> {{ item.platform_name }}</p>
+                               {% endif %}
+                               <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
+                               {% if item.associated_pm_name %}
+                                 <p><strong>PM:</strong> {{ item.associated_pm_name }}</p>
+                               {% endif %}
+                             </div>
                       <div class="modal-footer">
                         <a class="btn btn-primary" href="/money/expenses/{{ item.id }}/edit?next={{ return_url }}">Modifica</a>
                         <button class="btn btn-danger" type="button" data-bs-toggle="collapse" data-bs-target="#delInlineOvExp-{{ item.id }}">Elimina</button>
@@ -271,8 +328,11 @@
                           <div>Entrata effettiva: <strong>€{{ '%.2f'|format(item.net_after_pm if item.net_after_pm is defined and item.net_after_pm is not none else (item.pm_base_amount if item.pm_base_amount is defined else (item.net_amount if item.net_amount is defined else 0.0))) }}</strong></div>
                         </div>
                         <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
+                        {% if item.platform_name %}
+                          <p><strong>Piattaforma:</strong> {{ item.platform_name }}</p>
+                        {% endif %}
                         {% if item.associated_pm_name %}
-                          <p><strong>Associata a (PM):</strong> {{ item.associated_pm_name }}</p>
+                          <p><strong>PM:</strong> {{ item.associated_pm_name }}</p>
                           <p><strong>Percentuale PM:</strong> {{ (item.pm_percent if item.pm_percent is not none else 0) }}%</p>
                           <p><strong>PM amount:</strong> €{{ '%.2f'|format(item.pm_amount if item.pm_amount is not none else 0.0) }}</p>
                         {% endif %}
@@ -593,5 +653,22 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 {% endif %}
+
+<script>
+(function(){
+  const btn = document.getElementById('toggleRecurringBtn');
+  if (!btn) return;
+  let showRecurring = true;
+  btn.addEventListener('click', function(){
+    showRecurring = !showRecurring;
+    document.querySelectorAll('.entry-recurring').forEach(function(el){
+      el.style.display = showRecurring ? '' : 'none';
+    });
+    btn.innerHTML = showRecurring ? '<i class="bi bi-arrow-repeat me-1"></i>Nascondi ricorrenti' : '<i class="bi bi-arrow-repeat me-1"></i>Mostra ricorrenti';
+    btn.classList.toggle('btn-outline-secondary', showRecurring);
+    btn.classList.toggle('btn-outline-warning', !showRecurring);
+  });
+})();
+</script>
 
 {% endblock %}

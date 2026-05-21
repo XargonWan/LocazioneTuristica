@@ -91,8 +91,9 @@ async def stats_view(request: Request, year: int = None):
         pms_by_id = {pm.id: pm for pm in pms}
         companies = db.query(Company).all()
         platforms = db.query(Platform).all()
-        # pm totals similar to anagrafiche logic
+        # pm totals: commissioni maturate dal PM (quanto ha guadagnato)
         pm_totals = {}
+        expenses = db.query(Expense).all()
         incomes = db.query(Income).all()
         for inc in incomes:
             try:
@@ -106,17 +107,6 @@ async def stats_view(request: Request, year: int = None):
                 continue
             pm_amount = _get_income_pm_amount(inc, pms_by_id)
             pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
-        # subtract any expense payments made to PMs
-        expenses = db.query(Expense).all()
-        for exp in expenses:
-            try:
-                d = datetime.strptime(exp.date, '%Y-%m-%d')
-            except Exception:
-                continue
-            if not _matches_stats_year(d.year, year):
-                continue
-            if exp.associated_pm_id:
-                pm_totals[exp.associated_pm_id] = pm_totals.get(exp.associated_pm_id, 0.0) - get_pm_payment_settlement_amount(exp)
         # company totals (expenses)
         company_totals = {}
         for exp in expenses:

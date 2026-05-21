@@ -110,11 +110,11 @@ async def add_apartment(request: Request, name: str = Form(...), property_manage
 
 
 @router.post('/company/add')
-async def add_company(request: Request, company_name: str = Form(...), is_cleaning_company: str = Form('0'), next: str = Form(None), user=Depends(admin_required)):
+async def add_company(request: Request, company_name: str = Form(...), vat_number: str = Form(''), email: str = Form(''), phone: str = Form(''), company_type: str = Form(''), default_gross_amount: float = Form(None), default_net_amount: float = Form(None), next: str = Form(None), user=Depends(admin_required)):
     db = SessionLocal()
     await log_request_form(request)
     try:
-        c = Company(company_name=company_name, is_cleaning_company=(is_cleaning_company == '1'))
+        c = Company(company_name=company_name, vat_number=vat_number or None, email=email or None, phone=phone or None, company_type=company_type or None, is_cleaning_company=(company_type == 'Pulizie'), default_gross_amount=default_gross_amount, default_net_amount=default_net_amount)
         db.add(c)
         db.commit()
         return _redirect_to_next(next, '/anagrafiche')
@@ -375,7 +375,7 @@ async def edit_company_get(request: Request, company_id: int):
 
 
 @router.api_route('/company/{company_id}/edit', methods=["POST", "PUT", "PATCH"])
-async def edit_company_post(request: Request, company_id: int, company_name: str = Form(...), is_cleaning_company: str = Form('0'), default_gross_amount: float = Form(None), default_net_amount: float = Form(None), next: str = Form(None), user=Depends(admin_required)):
+async def edit_company_post(request: Request, company_id: int, company_name: str = Form(...), vat_number: str = Form(''), email: str = Form(''), phone: str = Form(''), company_type: str = Form(''), default_gross_amount: float = Form(None), default_net_amount: float = Form(None), next: str = Form(None), user=Depends(admin_required)):
     await log_request_form(request)
     try:
         print('DEBUG: edit_company_post called with method', request.method, 'company_id', company_id)
@@ -387,7 +387,11 @@ async def edit_company_post(request: Request, company_id: int, company_name: str
         if not c:
             return _redirect_to_next(next, '/anagrafiche')
         c.company_name = company_name
-        c.is_cleaning_company = (is_cleaning_company == '1')
+        c.vat_number = vat_number or None
+        c.email = email or None
+        c.phone = phone or None
+        c.company_type = company_type or None
+        c.is_cleaning_company = (company_type == 'Pulizie')
         c.default_gross_amount = default_gross_amount
         c.default_net_amount = default_net_amount
         db.add(c)
