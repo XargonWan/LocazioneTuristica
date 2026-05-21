@@ -389,6 +389,7 @@
                     <p><strong>IVA:</strong> {{ e.vat_percent }}%</p>
                     <p><strong>Imponibile:</strong> €{{ '%.2f'|format(e.net_amount) }}</p>
                     <p><strong>Appartamento:</strong> {{ e.apartment.name if e.apartment else '-' }}</p>
+                    <p><strong>Piattaforma:</strong> {{ e.platform_name or '-' }}</p>
                     {% if e.associated_pm_name %}
                       <p><strong>Associata a (PM):</strong> {{ e.associated_pm_name }}</p>
                       <p><strong>Percentuale PM:</strong> {{ '%.2f'|format(e.pm_percent) }}%</p>

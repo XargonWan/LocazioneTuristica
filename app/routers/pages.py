@@ -216,7 +216,7 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
                 total_non_pm_expense += amt
         month_names = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
         result = [{'month': m, 'month_name': month_names[m], 'income': months[m]['income'], 'expense': months[m]['expense'], 'pm_due': months[m]['pm_due']} for m in sorted(months.keys())]
-        pm_due = max(total_pm_accrued - total_pm_paid, 0.0)
+        pm_due = total_pm_accrued - total_pm_paid
         grand_total_real = total_income_before_pm - total_non_pm_expense - total_pm_payment_cash
         grand_total_virtual = grand_total_real - pm_due
         totals = {

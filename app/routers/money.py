@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Request, Form, Depends, HTTPException, UploadFile, File
 from typing import List
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from starlette.status import HTTP_303_SEE_OTHER
 from app.constants import DEFAULT_IVA, DEFAULT_STAMP_DUTY, DIRECT_BOOKING_PLATFORM_NOTE
 from app.db import SessionLocal
-from app.models import Expense, Income, Apartment, PropertyManager, Platform, Company, Attachment, Recurrence
+from app.models import Expense, Income, Apartment, PropertyManager, Platform, Company, Attachment, Recurrence, Cleaning
 from app.auth_utils import admin_required, get_current_user
 from app.debug import log_request_form
 from app.utils import (
@@ -38,6 +38,34 @@ def _build_route_url(path: str, **params) -> str:
     if not clean_params:
         return path
     return f"{path}?{urlencode(clean_params)}"
+
+
+def _align_overview_redirect_year(next_url: str | None, entry_date) -> str | None:
+    if not next_url:
+        return next_url
+    try:
+        parsed_entry_date = parse_date_value(entry_date)
+    except (TypeError, ValueError):
+        return next_url
+    if not parsed_entry_date:
+        return next_url
+
+    parsed_next_url = urlsplit(next_url)
+    if parsed_next_url.path != "/overview":
+        return next_url
+
+    aligned_query = []
+    year_found = False
+    for key, value in parse_qsl(parsed_next_url.query, keep_blank_values=True):
+        if key == 'year':
+            aligned_query.append((key, str(parsed_entry_date.year)))
+            year_found = True
+        else:
+            aligned_query.append((key, value))
+    if not year_found:
+        aligned_query.append(('year', str(parsed_entry_date.year)))
+
+    return parsed_next_url._replace(query=urlencode(aligned_query)).geturl()
 
 
 async def _collect_uploaded_attachment_payloads(files: list[UploadFile] | None):
@@ -349,6 +377,7 @@ async def expenses_index(request: Request):
         create_mode = request.query_params.get('mode') == 'create' or bool(next_url or default_date)
         expenses = []
         attachments_by_expense = {}
+        platform_name_by_expense = {}
         if not create_mode:
             expenses = db.query(Expense).options(joinedload(Expense.recurrence)).order_by(Expense.date.desc()).limit(50).all()
             if expenses:
@@ -357,6 +386,16 @@ async def expenses_index(request: Request):
                     ats = db.query(Attachment).filter(Attachment.expense_id.in_(expense_ids)).all()
                     for a in ats:
                         attachments_by_expense.setdefault(a.expense_id, []).append(a)
+                    cleanings = (
+                        db.query(Cleaning)
+                        .options(joinedload(Cleaning.income).joinedload(Income.platform))
+                        .filter(Cleaning.expense_id.in_(expense_ids))
+                        .all()
+                    )
+                    for cleaning in cleanings:
+                        linked_income = getattr(cleaning, 'income', None)
+                        linked_platform = getattr(linked_income, 'platform', None) if linked_income else None
+                        platform_name_by_expense[cleaning.expense_id] = linked_platform.name if linked_platform else None
         apartments = db.query(Apartment).all()
         pms = db.query(PropertyManager).all()
         cleaning_companies = db.query(Company).filter(Company.is_cleaning_company == True).order_by(Company.company_name).all()
@@ -399,6 +438,7 @@ async def expenses_index(request: Request):
                 e.pm_percent = float(getattr(e, 'pm_percent', 0.0) or 0.0)
                 e.pm_amount = float(getattr(e, 'pm_amount', 0.0) or 0.0)
                 e.net_after_pm = float(getattr(e, 'net_after_pm', 0.0) or 0.0)
+            e.platform_name = platform_name_by_expense.get(e.id)
         expense_upload_return = _build_route_url(
             "/money/expenses",
             mode=('create' if create_mode else None),
@@ -447,8 +487,9 @@ async def add_expense(request: Request, gross_amount: float = Form(None), net_am
         _persist_uploaded_attachment_payloads(db, uploaded_files, expense_id=e.id)
         if attachment_ids or uploaded_files:
             db.commit()
-        if next:
-            return RedirectResponse(url=next, status_code=HTTP_303_SEE_OTHER)
+        next_url = _align_overview_redirect_year(next, e.date)
+        if next_url:
+            return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url="/money/expenses", status_code=HTTP_303_SEE_OTHER)
     finally:
         db.close()
@@ -509,6 +550,7 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
                 target_recurrence = None
             if target_recurrence:
                 _rejoin_detached_expense(db, e, target_recurrence)
+                next_url = _align_overview_redirect_year(next_url, e.date)
                 if next_url:
                     return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
                 return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
@@ -582,6 +624,7 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
         _persist_uploaded_attachment_payloads(db, uploaded_files, expense_id=e.id)
         if uploaded_files:
             db.commit()
+        next_url = _align_overview_redirect_year(next_url, e.date)
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/expenses', status_code=HTTP_303_SEE_OTHER)
@@ -817,7 +860,7 @@ async def add_income(request: Request, gross_amount: float = Form(None), net_amo
         _persist_uploaded_attachment_payloads(db, uploaded_files, income_id=e.id)
         if attachment_ids or uploaded_files:
             db.commit()
-        next_url = next
+        next_url = _align_overview_redirect_year(next, e.date)
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url="/money/incomes", status_code=HTTP_303_SEE_OTHER)
@@ -887,6 +930,7 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
                 target_recurrence = None
             if target_recurrence:
                 _rejoin_detached_income(db, e, target_recurrence)
+                next_url = _align_overview_redirect_year(next_url, e.date)
                 if next_url:
                     return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
                 return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
@@ -964,6 +1008,7 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
         _persist_uploaded_attachment_payloads(db, uploaded_files, income_id=e.id)
         if uploaded_files:
             db.commit()
+        next_url = _align_overview_redirect_year(next_url, e.date)
         if next_url:
             return RedirectResponse(url=next_url, status_code=HTTP_303_SEE_OTHER)
         return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)

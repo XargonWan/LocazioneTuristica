@@ -46,7 +46,7 @@ def test_stats_template_shows_pm_and_company_labels():
     assert "Quanto risulta gia regolato ai PM nel filtro corrente." in rendered
     assert "Quota PM maturata sulle entrate del filtro corrente e non ancora coperta dai pagamenti PM, conteggiati al netto." in rendered
     assert "Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate dopo IVA e bollo prima del PM meno spese non PM meno esborso lordo dei pagamenti PM." in rendered
-    assert "Saldo virtuale del filtro corrente ipotizzando di aver gia regolato tutto il PM ancora dovuto." in rendered
+    assert "Saldo virtuale del filtro corrente ipotizzando di aver gia regolato tutto il PM ancora dovuto o di aver compensato l'eventuale credito PM." in rendered
 
 
 def test_company_cleaning_checkbox_and_badge():
@@ -315,6 +315,7 @@ def test_expenses_template_title_and_delete_modal():
     fake_clean = type("X", (), {"id": 11, "date": "2025-12-02", "gross_amount": 50, "net_amount": 41.0, "vat_percent": 22.0, "pm_percent": 0.0, "pm_amount": 0.0, "net_after_pm": 41.0, "associated_pm_name": None, "notes": "Pulizia standard", "is_cleaning": True})
     rendered = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e, fake_clean], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
     assert "Dettagli Spesa Riparazione caldaia" in rendered
+    assert '<strong>Piattaforma:</strong> -' in rendered
     assert '🧹' not in rendered
     # verify the new wording for PM association
     assert "Pagamento a (PM)" in rendered
@@ -396,6 +397,25 @@ def test_expenses_template_title_and_delete_modal():
     assert 'title="Elimina"' in edit_html
     assert '🗑️' in edit_html
     assert 'id="apply_series"' not in edit_html
+
+
+def test_expenses_template_shows_platform_in_details_when_available():
+    fake_e = type("X", (), {
+        "id": 19,
+        "date": "2025-12-01",
+        "gross_amount": 100,
+        "net_amount": 78.0,
+        "vat_percent": 22.0,
+        "pm_percent": 0.0,
+        "pm_amount": 0.0,
+        "net_after_pm": 78.0,
+        "associated_pm_name": None,
+        "notes": "Pulizia collegata",
+        "is_cleaning": True,
+        "platform_name": "Booking",
+    })
+    rendered = templates.env.get_template("expenses_index.html").render(request=R(), expenses=[fake_e], apartments=[], attachments=[], pms=[], cleaning_companies=[], attachments_by_expense={}, default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, apt_pm_map={}, next="/money/expenses")
+    assert '<strong>Piattaforma:</strong> Booking' in rendered
 
 
 def test_overview_annual_summary_replaces_legacy_table():
@@ -494,6 +514,29 @@ def test_overview_pm_due_subtracted_by_payment():
     assert '<small class="ms-3 text-danger">PM ancora da versare: €15.00' in rendered2
 
 
+def test_overview_negative_pm_due_shows_credit_label():
+    rendered = templates.env.get_template("overview.html").render(
+        request=R(),
+        months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": -10.0}],
+        entries_by_month={1: []},
+        year=2025,
+        prev_year=None,
+        next_year=None,
+        available_years=[2025],
+        current_year=2025,
+        total_income=0.0,
+        total_expense=0.0,
+        pm_paid_total=0.0,
+        pm_paid_pct=0.0,
+        annual_pm_due_total=-10.0,
+    )
+    assert 'PM ancora da versare: €-10.00' in rendered
+    assert '(in credito)' in rendered
+    assert 'text-success' in rendered
+    assert 'Gran totale virtuale:</strong> <span class="net-total net-positive">€10.00</span>' in rendered
+    assert "Saldo virtuale ipotizzando di aver gia versato tutto il PM ancora dovuto o di aver compensato l'eventuale credito PM." in rendered
+
+
 def test_overview_income_shows_net_and_inline_delete():
     # Provide an income entry in entries_by_month with net_amount
     rendered = templates.env.get_template("overview.html").render(request=R(), months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}], entries_by_month={1: [{'type': 'income', 'date': '2025-01-01', 'gross_amount': 100.0, 'net_amount': 78.0, 'notes': 'Rent', 'id': 1}]}, year=2025, prev_year=None, next_year=None, available_years=[2025], current_year=2025, total_income=0.0, total_expense=0.0, pm_paid_total=0.0, pm_paid_pct=0.0)
@@ -566,6 +609,38 @@ def test_overview_modals_show_recurrence_frequency():
     assert "senza scadenza (calcolata fino all'anno corrente)" in rendered
     assert 'Insurance 🗘' in rendered
     assert 'Dettagli Spesa Insurance 🗘' in rendered
+
+
+def test_overview_expense_modal_shows_platform_when_available():
+    months = [{"month": 6, "income": 0.0, "expense": 80.0, "pm_due": 0.0}]
+    entries_by_month = {
+        6: [
+            {
+                'type': 'expense',
+                'date': '2025-06-01',
+                'gross_amount': 80.0,
+                'notes': 'Insurance',
+                'id': 31,
+                'associated_pm_name': None,
+                'platform_name': 'Booking',
+            }
+        ]
+    }
+    rendered = templates.env.get_template("overview.html").render(
+        request=R(),
+        months=months,
+        entries_by_month=entries_by_month,
+        year=2025,
+        prev_year=None,
+        next_year=None,
+        available_years=[2025],
+        current_year=2025,
+        total_income=0.0,
+        total_expense=80.0,
+        pm_paid_total=0.0,
+        pm_paid_pct=0.0,
+    )
+    assert '<strong>Piattaforma:</strong> Booking' in rendered
 
 
 def test_overview_year_navigation_links():

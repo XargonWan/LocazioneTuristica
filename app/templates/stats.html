@@ -49,10 +49,10 @@
       <div><strong title="Entrate disponibili del filtro corrente, IVA, marca da bollo e quota PM gia detratti.">Totale Entrate disponibili (IVA, bollo e PM esclusi):</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
       <div><strong title="Spese registrate nel filtro corrente, incluse le uscite lorde per eventuali pagamenti fatti ai PM.">Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
       <div><strong title="Quanto risulta gia regolato ai PM nel filtro corrente. Le spese restano comunque conteggiate al lordo.">Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
-      <div><strong title="Quota PM maturata sulle entrate del filtro corrente e non ancora coperta dai pagamenti PM, conteggiati al netto.">PM da versare:</strong> <span id="stats-pm-due" class="text-warning">€0.00</span></div>
+      <div><strong title="Quota PM maturata sulle entrate del filtro corrente e non ancora coperta dai pagamenti PM, conteggiati al netto. Se negativa, indica un credito verso il PM.">PM da versare:</strong> <span id="stats-pm-due" class="text-warning">€0.00</span> <span id="stats-pm-due-credit" class="text-success d-none">(in credito)</span></div>
       <div class="w-100"></div>
       <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate dopo IVA e bollo prima del PM meno spese non PM meno esborso lordo dei pagamenti PM. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span id="stats-grand-real" class="net-zero">€0.00</span></div>
-      <div><strong class="text-decoration-underline" title="Saldo virtuale del filtro corrente ipotizzando di aver gia regolato tutto il PM ancora dovuto.">Gran totale virtuale:</strong> <span id="stats-grand-virtual" class="net-zero">€0.00</span></div>
+      <div><strong class="text-decoration-underline" title="Saldo virtuale del filtro corrente ipotizzando di aver gia regolato tutto il PM ancora dovuto o di aver compensato l'eventuale credito PM.">Gran totale virtuale:</strong> <span id="stats-grand-virtual" class="net-zero">€0.00</span></div>
     </div>
     <canvas id="monthly-chart"></canvas>
   </div>
@@ -141,7 +141,13 @@
       document.getElementById('stats-exp').textContent = `€${Number(totals.expense || 0).toFixed(2)}`;
       document.getElementById('stats-pm').textContent = `€${Number(totals.pm_paid || 0).toFixed(2)}`;
       document.getElementById('stats-pm-pct').textContent = `${Number(totals.pm_percent || 0).toFixed(2)}%`;
-      document.getElementById('stats-pm-due').textContent = `€${Number(totals.pm_due || 0).toFixed(2)}`;
+      const pmDueValue = Number(totals.pm_due || 0);
+      const pmDueEl = document.getElementById('stats-pm-due');
+      const pmDueCreditEl = document.getElementById('stats-pm-due-credit');
+      pmDueEl.textContent = `€${pmDueValue.toFixed(2)}`;
+      pmDueEl.classList.remove('text-warning', 'text-success');
+      pmDueEl.classList.add(pmDueValue < 0 ? 'text-success' : 'text-warning');
+      pmDueCreditEl.classList.toggle('d-none', pmDueValue >= 0);
       updateNetTotal('stats-grand-real', totals.grand_total_real || 0);
       updateNetTotal('stats-grand-virtual', totals.grand_total_virtual || 0);
 

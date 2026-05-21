@@ -7,7 +7,7 @@ from starlette.templating import Jinja2Templates
 
 from .backup import create_backup, finish_request_backup_tracking, get_request_backup_state, start_request_backup_tracking
 from .db import init_db, SessionLocal
-from .models import Attachment, Income, Expense
+from .models import Attachment, Income, Expense, Cleaning
 from .auth_utils import get_current_user
 from .utils import expand_open_recurrences_to_current_year, get_income_effective_amount, get_income_pm_amount, get_income_pm_base_amount, get_income_stamp_duty_amount, get_pm_payment_settlement_amount, get_setting_int
 
@@ -142,7 +142,7 @@ async def overview(request: Request):
         except Exception:
             # ignore bad input and stick with current year
             year = current_year
-        incomes = db.query(Income).options(joinedload(Income.recurrence), joinedload(Income.associated_pm)).all()
+        incomes = db.query(Income).options(joinedload(Income.recurrence), joinedload(Income.associated_pm), joinedload(Income.platform)).all()
         expenses = db.query(Expense).options(joinedload(Expense.recurrence), joinedload(Expense.associated_pm)).all()
 
         def recurrence_payload(entry):
@@ -249,6 +249,21 @@ async def overview(request: Request):
             if d.year == year and exp.id:
                 current_year_expense_ids.append(exp.id)
 
+        cleaning_platform_by_expense_id = {}
+        if current_year_expense_ids:
+            cleanings = (
+                db.query(Cleaning)
+                .options(joinedload(Cleaning.income).joinedload(Income.platform))
+                .filter(Cleaning.expense_id.in_(current_year_expense_ids))
+                .all()
+            )
+            for cleaning in cleanings:
+                if not cleaning.expense_id:
+                    continue
+                linked_income = getattr(cleaning, 'income', None)
+                linked_platform = getattr(linked_income, 'platform', None) if linked_income else None
+                cleaning_platform_by_expense_id[cleaning.expense_id] = linked_platform.name if linked_platform else None
+
         attachments_by_income = {}
         if current_year_income_ids:
             for attachment in db.query(Attachment).filter(Attachment.income_id.in_(current_year_income_ids)).all():
@@ -273,7 +288,7 @@ async def overview(request: Request):
                         associated_pm_name = f"{inc.associated_pm.first_name} {inc.associated_pm.last_name}"
                 except Exception:
                     associated_pm_name = None
-                item = {'type': 'income', 'date': d, 'raw_date': inc.date, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'apartment_id': getattr(inc, 'apartment_id', None), 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': get_income_pm_amount(inc), 'net_after_pm': get_income_effective_amount(inc), 'pm_base_amount': get_income_pm_base_amount(inc), 'stamp_duty_amount': get_income_stamp_duty_amount(inc), 'has_stamp_duty': bool(getattr(inc, 'has_stamp_duty', False)), 'cleaning_emoji': '🧹' if getattr(inc, 'apartment_id', None) else ''}
+                item = {'type': 'income', 'date': d, 'raw_date': inc.date, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'apartment_id': getattr(inc, 'apartment_id', None), 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': get_income_pm_amount(inc), 'net_after_pm': get_income_effective_amount(inc), 'pm_base_amount': get_income_pm_base_amount(inc), 'stamp_duty_amount': get_income_stamp_duty_amount(inc), 'has_stamp_duty': bool(getattr(inc, 'has_stamp_duty', False)), 'cleaning_emoji': '🧹' if getattr(inc, 'apartment_id', None) else '', 'platform_name': (inc.platform.name if getattr(inc, 'platform', None) else None)}
                 item.update(recurrence_payload(inc))
                 entries_by_month[d.month].append(item)
                 # include net_amount so overview modals can display netto computed from VAT
@@ -291,7 +306,7 @@ async def overview(request: Request):
                 except Exception:
                     associated_pm_name = None
                 # expenses no longer expose PM percentage/amount
-                item = {'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': 0.0, 'pm_amount': 0.0, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0)}
+                item = {'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': 0.0, 'pm_amount': 0.0, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0), 'platform_name': cleaning_platform_by_expense_id.get(exp.id)}
                 item.update(recurrence_payload(exp))
                 entries_by_month[d.month].append(item)
         # Sort entries in each month by date ascending (earliest first)
@@ -303,7 +318,7 @@ async def overview(request: Request):
         total_expense = sum([m['expense'] for m in months_list])
         pm_paid_total = annual_pm_paid_total
         pm_paid_pct = round((pm_paid_total / annual_income_net_total) * 100, 2) if annual_income_net_total > 0 else 0.0
-        pm_due_total = max(annual_pm_accrued_total - annual_pm_paid_total, 0.0)
+        pm_due_total = annual_pm_accrued_total - annual_pm_paid_total
         grand_total_real = annual_income_net_total - annual_expense_total - annual_pm_paid_total
         grand_total_virtual = grand_total_real - pm_due_total
         return templates.TemplateResponse(request, "overview.html", {'months': months_list, 'year': year, 'current_year': current_year, 'prev_year': prev_year, 'next_year': next_year, 'available_years': sorted_years, 'entries_by_month': entries_by_month, 'attachments_by_income': attachments_by_income, 'attachments_by_expense': attachments_by_expense, 'total_income': total_income, 'total_expense': total_expense, 'pm_paid_total': pm_paid_total, 'pm_paid_pct': pm_paid_pct, 'annual_income_net_total': annual_income_net_total, 'annual_expense_total': annual_expense_total, 'annual_pm_accrued_total': annual_pm_accrued_total, 'annual_pm_paid_total': annual_pm_paid_total, 'annual_pm_due_total': pm_due_total, 'grand_total_real': grand_total_real, 'grand_total_virtual': grand_total_virtual})

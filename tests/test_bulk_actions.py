@@ -460,6 +460,41 @@ def test_api_stats_monthly_all_years_aggregates_same_month_and_pm_due():
         db.close()
 
 
+def test_overview_and_stats_keep_negative_pm_due_as_credit():
+    db = SessionLocal()
+    try:
+        stats_year = 2039
+        pm = PropertyManager(first_name='Credit', last_name='PM', percent=10.0)
+        db.add(pm)
+        db.commit()
+        db.refresh(pm)
+
+        inc = Income(apartment_id=None, platform_id=None, date=f'{stats_year}-03-01', gross_amount=100.0,
+                     vat_percent=0.0, net_amount=100.0, pm_percent=10.0, pm_amount=10.0, net_after_pm=90.0,
+                     associated_pm_id=pm.id, notes='credit-income')
+        pm_payment = Expense(apartment_id=None, date=f'{stats_year}-03-02', gross_amount=20.0,
+                             vat_percent=0.0, net_amount=20.0, associated_pm_id=pm.id, notes='credit-payment')
+        db.add_all([inc, pm_payment])
+        db.commit()
+
+        overview_resp = client.get(f'/overview?year={stats_year}')
+        assert overview_resp.status_code == 200
+        assert '€-10.00' in overview_resp.text
+        assert '(in credito)' in overview_resp.text
+
+        stats_resp = client.get(f'/api/stats/monthly?year={stats_year}&pm_id={pm.id}')
+        assert stats_resp.status_code == 200
+        payload = stats_resp.json()
+        assert payload['totals']['pm_due'] == -10.0
+        assert payload['totals']['grand_total_virtual'] == 90.0
+    finally:
+        db.query(Income).filter(Income.id == inc.id).delete()
+        db.query(Expense).filter(Expense.id == pm_payment.id).delete()
+        db.query(PropertyManager).filter(PropertyManager.id == pm.id).delete()
+        db.commit()
+        db.close()
+
+
 def test_pm_total_subtracts_expense_payments():
     db = SessionLocal()
     try:

@@ -5,6 +5,12 @@
 {% set return_url = '/overview?year=' ~ year %}
 {% set attachments_by_income = attachments_by_income if attachments_by_income is defined else {} %}
 {% set attachments_by_expense = attachments_by_expense if attachments_by_expense is defined else {} %}
+{% macro pm_due_markup(amount) -%}
+  {%- set due_amount = amount|default(0)|float -%}
+  {%- if due_amount != 0 -%}
+    <small class="ms-3 {{ 'text-success' if due_amount < 0 else 'text-danger' }}">PM ancora da versare: €{{ '%.2f'|format(due_amount) }}{% if due_amount < 0 %} <span class="text-success">(in credito)</span>{% endif %}</small>
+  {%- endif -%}
+{%- endmacro %}
 <div class="d-flex justify-content-between align-items-center">
   <h1 class="mb-0">
     {# previous year arrow only if there is data for one before #}
@@ -65,9 +71,7 @@
                               <div>
                                   <small class="text-success">Incassi disponibili: €{{ '%.2f'|format(m.income) }}</small>
                                   <small class="text-danger ms-3">Spese lorde: €{{ '%.2f'|format(m.expense) }}</small>
-                                {% if m.pm_due and m.pm_due > 0 %}
-                                    <small class="ms-3 text-danger">PM ancora da versare: €{{ '%.2f'|format(m.pm_due) }}</small>
-                                {% endif %}
+                                {{ pm_due_markup(m.pm_due) }}
                               </div>
                            </div>
                              <div class="d-flex align-items-center">
@@ -147,12 +151,12 @@
             <div><strong title="Entrate dell'anno dopo IVA e marca da bollo, prima dei versamenti al PM.">Entrate dopo IVA e bollo:</strong> <span>€{{ '%.2f'|format(annual_income_net_total) }}</span></div>
             <div><strong title="Spese registrate nell'anno, esclusi i pagamenti fatti ai PM che sono mostrati a parte.">Spese:</strong> <span>€{{ '%.2f'|format(annual_expense_total) }}</span></div>
             <div><strong title="Quanto hai effettivamente gia versato ai PM nell'anno tramite spese associate a un PM.">PM gia versato:</strong> <span>€{{ '%.2f'|format(annual_pm_paid_total) }}</span></div>
-            {% if annual_pm_due_total > 0 %}
-              <div><strong title="Quota PM maturata sulle entrate dell'anno ma non ancora versata.">PM ancora da versare:</strong> <span>€{{ '%.2f'|format(annual_pm_due_total) }}</span></div>
+            {% if annual_pm_due_total != 0 %}
+              <div><strong title="Quota PM maturata sulle entrate dell'anno ma non ancora versata; se negativa, indica un credito verso il PM.">PM ancora da versare:</strong> <span class="{{ 'text-success' if annual_pm_due_total < 0 else '' }}">€{{ '%.2f'|format(annual_pm_due_total) }}</span>{% if annual_pm_due_total < 0 %} <span class="text-success">(in credito)</span>{% endif %}</div>
             {% endif %}
             <div class="w-100"></div>
             <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati: entrate dopo IVA e bollo meno spese gia sostenute meno PM gia dato. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span class="net-total {{ grand_total_real_class }}">€{{ '%.2f'|format(grand_total_real) }}</span></div>
-            <div><strong class="text-decoration-underline" title="Saldo virtuale ipotizzando di aver gia versato tutto il PM ancora dovuto.">Gran totale virtuale:</strong> <span class="net-total {{ grand_total_virtual_class }}">€{{ '%.2f'|format(grand_total_virtual) }}</span></div>
+            <div><strong class="text-decoration-underline" title="Saldo virtuale ipotizzando di aver gia versato tutto il PM ancora dovuto o di aver compensato l'eventuale credito PM.">Gran totale virtuale:</strong> <span class="net-total {{ grand_total_virtual_class }}">€{{ '%.2f'|format(grand_total_virtual) }}</span></div>
           </div>
         </div>
       </div>
@@ -204,6 +208,7 @@
                               {% if item.type == 'income' and item.net_amount is defined %}
                                 <p><strong>Imponibile:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
                               {% endif %}
+                              <p><strong>Piattaforma:</strong> {{ item.platform_name or '-' }}</p>
                               <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
                               {% if item.associated_pm_name %}
                                 <p><strong>Associata a (PM):</strong> {{ item.associated_pm_name }}</p>

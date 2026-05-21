@@ -550,6 +550,40 @@ def test_add_income_uploads_new_files_on_submit():
         db.close()
 
 
+def test_add_income_redirects_overview_to_saved_entry_year():
+    db = SessionLocal()
+    income = None
+    try:
+        create_admin(db)
+        client = TestClient(app)
+        login_admin(client)
+
+        note = f'add-income-overview-year-{uuid.uuid4().hex[:8]}'
+        response = client.post(
+            '/money/incomes/add',
+            data={
+                'date': '2025-09-06',
+                'gross_amount': '100.00',
+                'vat_percent': '22.0',
+                'pm_percent': '0.0',
+                'notes': note,
+                'next': '/overview?year=2026',
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers['location'] == '/overview?year=2025'
+        income = db.query(Income).filter(Income.notes == note).order_by(Income.id.desc()).first()
+        assert income is not None
+        assert income.date == '2025-09-06'
+    finally:
+        if income is not None:
+            db.query(Income).filter(Income.id == income.id).delete()
+        db.commit()
+        db.close()
+
+
 def test_edit_income_uploads_new_files_on_submit():
     db = SessionLocal()
     income = None
