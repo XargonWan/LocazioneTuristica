@@ -29,13 +29,43 @@ def format_date_value(value):
 
 def get_expense_net_amount(entry):
     gross_amount = float(getattr(entry, 'gross_amount', 0.0) or 0.0)
+    vat_percent = float(getattr(entry, 'vat_percent', 0.0) or 0.0)
+    if gross_amount:
+        vat_factor = 1 + (vat_percent / 100.0)
+        if vat_factor > 0:
+            return round(gross_amount / vat_factor, 2)
     raw_net_amount = getattr(entry, 'net_amount', None)
     if raw_net_amount not in (None, ''):
-        net_amount = float(raw_net_amount or 0.0)
-        if net_amount or not gross_amount:
-            return round(net_amount, 2)
-    vat_percent = float(getattr(entry, 'vat_percent', 0.0) or 0.0)
-    return round(gross_amount * (1 - (vat_percent / 100.0)), 2)
+        return round(float(raw_net_amount or 0.0), 2)
+    return 0.0
+
+
+def get_income_stamp_duty_amount(entry):
+    raw_amount = getattr(entry, 'stamp_duty_amount', None)
+    stamp_duty_amount = round(float(raw_amount or 0.0), 2)
+    has_stamp_duty = bool(getattr(entry, 'has_stamp_duty', False))
+    if not has_stamp_duty and stamp_duty_amount == 0.0:
+        return 0.0
+    return stamp_duty_amount
+
+
+def get_income_pm_base_amount(entry):
+    net_amount = round(float(getattr(entry, 'net_amount', 0.0) or 0.0), 2)
+    return round(net_amount - get_income_stamp_duty_amount(entry), 2)
+
+
+def get_income_pm_amount(entry, pm_percent: float | None = None):
+    resolved_pm_percent = pm_percent
+    if resolved_pm_percent is None:
+        resolved_pm_percent = float(getattr(entry, 'pm_percent', 0.0) or 0.0)
+    else:
+        resolved_pm_percent = float(resolved_pm_percent or 0.0)
+    return round(get_income_pm_base_amount(entry) * (resolved_pm_percent / 100.0), 2)
+
+
+def get_income_effective_amount(entry, pm_percent: float | None = None):
+    pm_base_amount = get_income_pm_base_amount(entry)
+    return round(pm_base_amount - get_income_pm_amount(entry, pm_percent=pm_percent), 2)
 
 
 def get_pm_payment_settlement_amount(entry):
@@ -106,6 +136,8 @@ def build_recurrence_entry(model_cls, source_entry, recurrence_id, entry_date):
             gross_amount=source_entry.gross_amount,
             vat_percent=source_entry.vat_percent,
             net_amount=source_entry.net_amount,
+            has_stamp_duty=source_entry.has_stamp_duty,
+            stamp_duty_amount=source_entry.stamp_duty_amount,
             pm_percent=source_entry.pm_percent,
             pm_amount=source_entry.pm_amount,
             net_after_pm=source_entry.net_after_pm,
@@ -249,6 +281,18 @@ def get_setting_int(key: str, default: int, minimum: int | None = None):
     raw_value = get_setting(key, str(default))
     try:
         parsed_value = int(raw_value)
+    except (TypeError, ValueError):
+        parsed_value = default
+
+    if minimum is not None and parsed_value < minimum:
+        return default
+    return parsed_value
+
+
+def get_setting_float(key: str, default: float, minimum: float | None = None):
+    raw_value = get_setting(key, str(default))
+    try:
+        parsed_value = float(raw_value)
     except (TypeError, ValueError):
         parsed_value = default
 

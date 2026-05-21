@@ -41,12 +41,12 @@ def test_stats_template_shows_pm_and_company_labels():
     assert 'Pulizie Rossi' in rendered
     assert 'window.reloadSelections' in rendered
     assert 'updateNetTotal' in rendered
-    assert "Entrate nette del filtro corrente, gia al netto dell'IVA e della quota PM." in rendered
-    assert "Spese registrate nel filtro corrente, inclusi eventuali pagamenti fatti ai PM che qui restano conteggiati nel totale spese." in rendered
-    assert "Quanto hai effettivamente gia versato ai PM nel filtro corrente tramite spese associate a un PM." in rendered
-    assert "Quota PM maturata sulle entrate del filtro corrente ma non ancora versata." in rendered
-    assert "Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate nette prima del PM meno spese non PM meno PM gia versato. Se devi ancora qualcosa al PM, qui resta ancora dentro." in rendered
-    assert "Saldo virtuale del filtro corrente ipotizzando di aver gia versato tutto il PM ancora dovuto." in rendered
+    assert "Entrate disponibili del filtro corrente, IVA, marca da bollo e quota PM gia detratti." in rendered
+    assert "Spese registrate nel filtro corrente, incluse le uscite lorde per eventuali pagamenti fatti ai PM." in rendered
+    assert "Quanto risulta gia regolato ai PM nel filtro corrente." in rendered
+    assert "Quota PM maturata sulle entrate del filtro corrente e non ancora coperta dai pagamenti PM, conteggiati al netto." in rendered
+    assert "Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate dopo IVA e bollo prima del PM meno spese non PM meno esborso lordo dei pagamenti PM." in rendered
+    assert "Saldo virtuale del filtro corrente ipotizzando di aver gia regolato tutto il PM ancora dovuto." in rendered
 
 
 def test_company_cleaning_checkbox_and_badge():
@@ -187,10 +187,15 @@ def test_incomes_template_shows_pm_and_delete_modal():
         "date": "2025-12-01",
         "apartment_id": 7,
         "gross_amount": 100,
-        "net_amount": 78.0,
+        "net_amount": 81.97,
         "vat_percent": 22.0,
         "pm_percent": 10.0,
-        "pm_amount": 10.0,
+        "pm_amount": 8.2,
+        "pm_base_amount": 81.97,
+        "net_after_pm": 73.77,
+        "has_stamp_duty": False,
+        "stamp_duty_amount": 0.0,
+        "vat_amount": 18.03,
         "associated_pm_name": "PM One",
         "notes": "Incasso pulito",
         "cleaning_emoji": "🧹",
@@ -216,6 +221,9 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'id="income_add_attachment_file"' in rendered
     assert 'enctype="multipart/form-data"' in rendered
     assert 'I file scelti qui verranno caricati solo quando premi Aggiungi entrata.' in rendered
+    assert 'name="has_stamp_duty"' in rendered
+    assert 'id="income_stamp_duty_amount"' in rendered
+    assert 'Calcolo entrata effettiva' in rendered
     assert 'Carica nuovo allegato' not in rendered
     # edit toggles should not appear when next parameter is used (add-from-overview)
     assert 'id="editModeToggleExp"' not in rendered
@@ -229,7 +237,7 @@ def test_incomes_template_shows_pm_and_delete_modal():
     # also simulate an income with recurrence to see detail text
     fake_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':'2025-06-01'})
     fake_attachment_income = type('A', (), {'id': 301, 'filename': 'ricevuta.pdf', 'mimetype': 'application/pdf', 'size': 111})
-    fake_inc2 = type('X', (), {'id': 2,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':10.0,'associated_pm_name':'PM One','notes':'Incasso pulito','recurrence': fake_r, 'cleaning_emoji': '🧹'})
+    fake_inc2 = type('X', (), {'id': 2,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':81.97,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':8.2,'pm_base_amount':81.97,'net_after_pm':73.77,'has_stamp_duty':False,'stamp_duty_amount':0.0,'vat_amount':18.03,'associated_pm_name':'PM One','notes':'Incasso pulito','recurrence': fake_r, 'cleaning_emoji': '🧹'})
     rendered3 = templates.env.get_template('incomes_index.html').render(request=R(), incomes=[fake_inc2], apartments=[], platforms=[], attachments=[], attachments_by_income={2: [fake_attachment_income]}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
     assert 'Ricorrenza:' in rendered3
     assert 'Mensile' in rendered3
@@ -241,7 +249,7 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'attachment-view-trigger' in rendered3
     assert '🗑️' in rendered3
     fake_open_r = type('R', (), {'type':'monthly', 'start_date':'2025-01-01','end_date':None})
-    fake_inc_open = type('X', (), {'id': 3,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':78.0,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':10.0,'associated_pm_name':'PM One','notes':'Aperta','recurrence': fake_open_r, 'cleaning_emoji': ''})
+    fake_inc_open = type('X', (), {'id': 3,'date':'2025-01-01','apartment_id':3,'gross_amount': 100,'net_amount':81.97,'vat_percent':22.0,'pm_percent':10.0,'pm_amount':8.2,'pm_base_amount':81.97,'net_after_pm':73.77,'has_stamp_duty':False,'stamp_duty_amount':0.0,'vat_amount':18.03,'associated_pm_name':'PM One','notes':'Aperta','recurrence': fake_open_r, 'cleaning_emoji': ''})
     rendered_open = templates.env.get_template('incomes_index.html').render(request=R(), incomes=[fake_inc_open], apartments=[], platforms=[], attachments=[], attachments_by_income={}, pms=[], default_apartment_id=None, default_associated_pm_id=None, default_pm_percent=0.0, next="/money/incomes")
     assert "senza scadenza (calcolata fino all'anno corrente)" in rendered_open
     assert 'Aperta 🗘' in rendered_open
@@ -262,9 +270,11 @@ def test_incomes_template_shows_pm_and_delete_modal():
     assert 'id="cleaningCompanyModal"' in rendered_no_next_exp
     assert 'Cleaner Modal' in rendered_no_next_exp
     assert 'name="associated_company_id"' in rendered_no_next_exp
-    assert "Puoi inserire il lordo o il netto" in rendered_no_next_exp
+    assert "Puoi inserire il lordo o l'imponibile" in rendered_no_next_exp
     assert 'setupExpenseAmountSync' in rendered_no_next_exp
-    assert "net / vatFactor" in rendered_no_next_exp
+    assert "gross / vatFactor" in rendered_no_next_exp
+    assert 'id="expense_vat_amount"' in rendered_no_next_exp
+    assert 'id="bulk_expense_vat_amount"' in rendered_no_next_exp
     assert 'id="bulk_expense_net_amount"' in rendered_no_next_exp
     assert 'id="bulk_expense_gross_amount"' in rendered_no_next_exp
     assert 'id="bulk_expense_vat_percent"' in rendered_no_next_exp
@@ -365,9 +375,10 @@ def test_expenses_template_title_and_delete_modal():
     assert 'name="rejoin_recurrence"' in edit_html
     assert 'Falla rientrare nella serie' in edit_html
     assert 'Serie originaria:' in edit_html
-    assert "Puoi inserire il lordo o il netto" in edit_html
+    assert "Puoi inserire il lordo o l'imponibile" in edit_html
     assert 'setupExpenseAmountSync' in edit_html
-    assert "net / vatFactor" in edit_html
+    assert "gross / vatFactor" in edit_html
+    assert 'id="expense_edit_vat_amount"' in edit_html
     assert 'enctype="multipart/form-data"' in edit_html
     assert 'id="expense_edit_attachment_file"' in edit_html
     assert 'form="expenseEditForm"' in edit_html
@@ -486,7 +497,8 @@ def test_overview_pm_due_subtracted_by_payment():
 def test_overview_income_shows_net_and_inline_delete():
     # Provide an income entry in entries_by_month with net_amount
     rendered = templates.env.get_template("overview.html").render(request=R(), months=[{"month": 1, "income": 0.0, "expense": 0.0, "pm_due": 0.0}], entries_by_month={1: [{'type': 'income', 'date': '2025-01-01', 'gross_amount': 100.0, 'net_amount': 78.0, 'notes': 'Rent', 'id': 1}]}, year=2025, prev_year=None, next_year=None, available_years=[2025], current_year=2025, total_income=0.0, total_expense=0.0, pm_paid_total=0.0, pm_paid_pct=0.0)
-    assert "Importo netto" in rendered
+    assert "Imponibile" in rendered
+    assert "Calcolo entrata effettiva" in rendered
     assert "delInlineOvInc-1" in rendered
 
 

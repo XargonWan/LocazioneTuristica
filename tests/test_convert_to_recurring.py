@@ -1,8 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
+from app.constants import DIRECT_BOOKING_PLATFORM_NOTE
 from app.main import app
 from app.db import SessionLocal
-from app.models import Apartment, Expense, Income, PropertyManager, Recurrence, User
+from app.models import Apartment, Expense, Income, Platform, PropertyManager, Recurrence, User
 from app.utils import expand_open_recurrences_to_current_year
 from app.routers.auth import pwd_context
 
@@ -360,7 +361,7 @@ def test_expense_edit_calculates_gross_from_net():
         assert r.status_code in (200, 303)
         db.refresh(exp)
         assert float(exp.net_amount) == 78.0
-        assert float(exp.gross_amount) == 100.0
+        assert float(exp.gross_amount) == 95.16
     finally:
         db.close()
 
@@ -608,8 +609,49 @@ def test_add_income_with_apartment_pm_defaults_associated_pm_and_percent():
         assert inc is not None
         assert inc.associated_pm_id == pm.id
         assert float(inc.pm_percent) == 15.0
-        assert float(inc.pm_amount) == 15.0
-        assert float(inc.net_after_pm) == 63.0
+        assert float(inc.pm_amount) == 12.3
+        assert float(inc.net_after_pm) == 69.67
+    finally:
+        db.close()
+
+
+def test_add_income_with_stamp_duty_reduces_pm_base():
+    db = SessionLocal()
+    try:
+        create_admin(db)
+        pm = PropertyManager(first_name='Direct', last_name='PM', percent=10.0)
+        db.add(pm)
+        db.commit()
+        apt = Apartment(name='Direct Apt', property_manager_id=pm.id)
+        db.add(apt)
+        db.commit()
+
+        client = TestClient(app)
+        client.post('/auth/login', data={'username': 'testadmin', 'password': 'secret'})
+        direct_booking_platform = db.query(Platform).filter(Platform.notes == DIRECT_BOOKING_PLATFORM_NOTE).first()
+        assert direct_booking_platform is not None
+
+        resp = client.post('/money/incomes/add', data={
+            'gross_amount': '122.0',
+            'vat_percent': '22.0',
+            'pm_percent': '0.0',
+            'date': '2025-10-02',
+            'apartment_id': str(apt.id),
+            'platform_id': str(direct_booking_platform.id),
+            'associate_pm': 'on',
+            'has_stamp_duty': '1',
+            'stamp_duty_amount': '2.0',
+            'notes': 'direct-booking-stamp',
+        })
+
+        assert resp.status_code in (200, 303)
+        inc = db.query(Income).filter(Income.notes == 'direct-booking-stamp').order_by(Income.id.desc()).first()
+        assert inc is not None
+        assert bool(inc.has_stamp_duty) is True
+        assert float(inc.stamp_duty_amount) == 2.0
+        assert float(inc.net_amount) == 100.0
+        assert float(inc.pm_amount) == 9.8
+        assert float(inc.net_after_pm) == 88.2
     finally:
         db.close()
 

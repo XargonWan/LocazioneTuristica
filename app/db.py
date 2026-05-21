@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from .constants import DEFAULT_IVA, DEFAULT_STAMP_DUTY, DIRECT_BOOKING_PLATFORM_NAME, DIRECT_BOOKING_PLATFORM_NOTE
 from .backup import record_session_commit
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/db.sqlite3")
@@ -53,6 +54,8 @@ def init_db():
                     pass
             ensure_column('expense', 'orig_recurrence_id', 'INTEGER REFERENCES recurrence(id)')
             ensure_column('income', 'orig_recurrence_id', 'INTEGER REFERENCES recurrence(id)')
+            ensure_column('income', 'has_stamp_duty', 'INTEGER DEFAULT 0')
+            ensure_column('income', 'stamp_duty_amount', 'DECIMAL(10, 2) DEFAULT 0.0')
             cur.execute("PRAGMA table_info(company)")
             cols = [row[1] for row in cur.fetchall()]
             if 'is_cleaning_company' not in cols:
@@ -72,6 +75,46 @@ def init_db():
             conn.commit()
         finally:
             conn.close()
+
+    db = SessionLocal()
+    try:
+        def ensure_setting(key, value):
+            setting = db.query(models.Settings).filter(models.Settings.key == key).first()
+            if setting:
+                return setting
+            setting = models.Settings(key=key, value=value)
+            db.add(setting)
+            return setting
+
+        platform = (
+            db.query(models.Platform)
+            .filter(models.Platform.notes == DIRECT_BOOKING_PLATFORM_NOTE)
+            .order_by(models.Platform.id.asc())
+            .first()
+        )
+        if not platform:
+            platform = (
+                db.query(models.Platform)
+                .filter(models.Platform.name == DIRECT_BOOKING_PLATFORM_NAME)
+                .order_by(models.Platform.id.asc())
+                .first()
+            )
+            if not platform:
+                platform = models.Platform(
+                    name=DIRECT_BOOKING_PLATFORM_NAME,
+                    link='',
+                    notes=DIRECT_BOOKING_PLATFORM_NOTE,
+                )
+                db.add(platform)
+            else:
+                platform.notes = DIRECT_BOOKING_PLATFORM_NOTE
+        platform.name = DIRECT_BOOKING_PLATFORM_NAME
+
+        ensure_setting('default_iva', str(DEFAULT_IVA))
+        ensure_setting('default_stamp_duty', str(DEFAULT_STAMP_DUTY))
+        db.commit()
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     init_db()

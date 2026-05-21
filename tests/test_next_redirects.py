@@ -67,8 +67,13 @@ def test_add_cleaning_redirects_to_next():
 
         cleaning = db.query(Cleaning).filter(Cleaning.notes == note).order_by(Cleaning.id.desc()).first()
         assert cleaning is not None
+        assert float(cleaning.gross_amount) == 45.0
+        assert float(cleaning.net_amount) == 36.89
         if cleaning.expense_id:
             expense = db.query(Expense).filter(Expense.id == cleaning.expense_id).first()
+            assert expense is not None
+            assert float(expense.gross_amount) == 45.0
+            assert float(expense.net_amount) == 36.89
     finally:
         if cleaning is not None:
             db.query(Cleaning).filter(Cleaning.id == cleaning.id).delete()
@@ -429,6 +434,7 @@ def test_add_expense_uploads_new_files_on_submit():
         assert response.headers['location'] == '/overview?year=2025'
         expense = db.query(Expense).filter(Expense.notes.like('add-expense-submit-%')).order_by(Expense.id.desc()).first()
         assert expense is not None
+        assert float(expense.net_amount) == 65.57
         attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
         assert attachment is not None
         assert attachment.expense_id == expense.id
@@ -480,6 +486,7 @@ def test_edit_expense_uploads_new_files_on_submit():
         assert response.headers['location'] == '/overview?year=2025'
         db.refresh(expense)
         assert expense.date == '2025-05-02'
+        assert float(expense.net_amount) == 15.75
         attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
         assert attachment is not None
         assert attachment.expense_id == expense.id
@@ -525,6 +532,8 @@ def test_add_income_uploads_new_files_on_submit():
         assert response.headers['location'] == '/overview?year=2025'
         income = db.query(Income).filter(Income.notes.like('add-income-submit-%')).order_by(Income.id.desc()).first()
         assert income is not None
+        assert float(income.net_amount) == 81.97
+        assert float(income.net_after_pm) == 81.97
         attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
         assert attachment is not None
         assert attachment.income_id == income.id
@@ -577,6 +586,8 @@ def test_edit_income_uploads_new_files_on_submit():
         assert response.headers['location'] == '/overview?year=2025'
         db.refresh(income)
         assert income.date == '2025-07-02'
+        assert float(income.net_amount) == 45.08
+        assert float(income.net_after_pm) == 45.08
         attachment = db.query(Attachment).filter(Attachment.filename == filename).order_by(Attachment.id.desc()).first()
         assert attachment is not None
         assert attachment.income_id == income.id

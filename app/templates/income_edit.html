@@ -3,6 +3,8 @@
 {% block content %}
 {% import 'attachment_macros.html' as attachment_ui %}
 {% set income_upload_return = '/money/incomes/' ~ income.id ~ '/edit' %}
+{% set default_stamp_duty_amount = default_stamp_duty_amount if default_stamp_duty_amount is defined else 2.0 %}
+{% set direct_booking_platform_id = direct_booking_platform_id if direct_booking_platform_id is defined else none %}
 {% if next is defined and next %}
   {% set income_upload_return = income_upload_return ~ '?next=' ~ (next|urlencode) %}
 {% endif %}
@@ -34,15 +36,24 @@
           </div>
           <div class="mb-3">
             <label>Importo lordo</label>
-            <input type="number" name="gross_amount" step="0.01" class="form-control" value="{{ income.gross_amount }}" required>
+            <input type="number" name="gross_amount" step="0.01" class="form-control" id="income_edit_gross_amount" value="{{ income.gross_amount }}" required>
+          </div>
+          <div class="mb-3">
+            <label title="L'imponibile e l'importo al netto dell'IVA, base su cui si calcola l'IVA.">Imponibile</label>
+            <input type="number" name="net_amount" step="0.01" class="form-control" id="income_edit_net_amount" value="{{ income.net_amount }}">
+            <small class="text-muted">Puoi inserire il lordo o l'imponibile: l'altro importo viene calcolato automaticamente in base all'IVA.</small>
+          </div>
+          <div class="mb-3">
+            <label>IVA calcolata</label>
+            <input type="number" step="0.01" class="form-control" id="income_edit_vat_amount" value="" readonly tabindex="-1">
           </div>
           <div class="mb-3">
             <label>IVA (%)</label>
-            <input type="number" name="vat_percent" step="0.01" class="form-control" value="{{ income.vat_percent }}">
+            <input type="number" name="vat_percent" step="0.01" class="form-control" id="income_edit_vat_percent" value="{{ income.vat_percent }}">
           </div>
           <div class="mb-3">
             <label>Percentuale PM (%)</label>
-            <input type="number" name="pm_percent" step="0.01" class="form-control" value="{{ income.pm_percent }}">
+            <input type="number" name="pm_percent" step="0.01" class="form-control" id="income_edit_pm_percent" value="{{ income.pm_percent }}">
           </div>
           <div class="mb-3">
             <label>Appartamento</label>
@@ -55,12 +66,23 @@
           </div>
           <div class="mb-3">
             <label>Piattaforma</label>
-            <select name="platform_id" class="form-control">
+            <select name="platform_id" class="form-control" id="income_edit_platform_id">
               <option value="">---</option>
               {% for p in platforms %}
                 <option value="{{ p.id }}" {% if p.id == income.platform_id %}selected{% endif %}>{{ p.name }}</option>
               {% endfor %}
             </select>
+          </div>
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="has_stamp_duty" id="income_edit_has_stamp_duty" value="1" {% if income.has_stamp_duty %}checked{% endif %}>
+              <label class="form-check-label" for="income_edit_has_stamp_duty">Marca da bollo</label>
+            </div>
+            <small class="text-muted">Se presente, viene sottratta prima di calcolare il PM.</small>
+          </div>
+          <div class="mb-3{% if not income.has_stamp_duty %} d-none{% endif %}" id="income_edit_stamp_duty_group">
+            <label>Importo marca da bollo</label>
+            <input type="number" name="stamp_duty_amount" step="0.01" class="form-control" id="income_edit_stamp_duty_amount" value="{{ '%.2f'|format(income.stamp_duty_amount) if income.has_stamp_duty else '%.2f'|format(default_stamp_duty_amount) }}">
           </div>
           <div class="mb-3">
             {% set has_pm = income.associated_pm_id is not none and income.associated_pm_id != '' %}
@@ -84,6 +106,15 @@
               }
             })();
           </script>
+          <div class="alert alert-light border" id="income_edit_calculation_preview">
+            <div class="fw-semibold mb-2">Calcolo entrata effettiva</div>
+            <div>Entrata inserita: <strong id="income_edit_calc_gross">€0.00</strong></div>
+            <div>IVA: <strong id="income_edit_calc_vat">-€0.00</strong></div>
+            <div>Marca da bollo: <strong id="income_edit_calc_stamp">-€0.00</strong></div>
+            <div>Base PM: <strong id="income_edit_calc_pm_base">€0.00</strong></div>
+            <div>PM (<span id="income_edit_calc_pm_percent">0.00</span>%): <strong id="income_edit_calc_pm_amount">-€0.00</strong></div>
+            <div>Entrata effettiva: <strong id="income_edit_calc_effective">€0.00</strong></div>
+          </div>
           <div class="mb-3">
             <label>Note</label>
             <textarea name="notes" class="form-control">{{ income.notes }}</textarea>
@@ -234,4 +265,281 @@
     </div>
   </div>
 </div>
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    function parseOptionalAmountValue(input){
+      if (!input) {
+        return null;
+      }
+      const rawValue = input.value.trim();
+      if (rawValue === '') {
+        return null;
+      }
+      const parsedValue = parseFloat(rawValue);
+      return Number.isFinite(parsedValue) ? parsedValue : null;
+    }
+
+    function formatFixedAmount(value){
+      return Number.isFinite(value) ? value.toFixed(2) : '0.00';
+    }
+
+    function formatEuroAmount(value){
+      return `€${formatFixedAmount(value)}`;
+    }
+
+    function setupIncomeStampAndPreview(options){
+      const grossInput = document.getElementById(options.grossId);
+      const netInput = document.getElementById(options.netId);
+      const pmPercentInput = document.getElementById(options.pmPercentId);
+      const stampCheckbox = document.getElementById(options.stampCheckboxId);
+      const stampInput = document.getElementById(options.stampInputId);
+      const stampGroup = document.getElementById(options.stampGroupId);
+      const platformSelect = options.platformId ? document.getElementById(options.platformId) : null;
+      const defaultStampDutyAmount = Number(options.defaultStampDutyAmount || 0);
+      const directBookingPlatformId = options.directBookingPlatformId == null ? null : String(options.directBookingPlatformId);
+
+      function setText(id, value){
+        const el = document.getElementById(id);
+        if (el) {
+          el.textContent = value;
+        }
+      }
+
+      function syncStampVisibility(prefillIfMissing){
+        if (!stampCheckbox) {
+          return;
+        }
+        const hasStampDuty = stampCheckbox.checked;
+        if (stampGroup) {
+          stampGroup.classList.toggle('d-none', !hasStampDuty);
+        }
+        if (hasStampDuty && stampInput && stampInput.value.trim() === '' && prefillIfMissing) {
+          stampInput.value = formatFixedAmount(defaultStampDutyAmount);
+        }
+      }
+
+      function resolveStampAmount(){
+        if (!stampCheckbox || !stampCheckbox.checked) {
+          return 0.0;
+        }
+        const parsedValue = parseOptionalAmountValue(stampInput);
+        return parsedValue === null ? defaultStampDutyAmount : parsedValue;
+      }
+
+      function updatePreview(){
+        const grossAmount = parseOptionalAmountValue(grossInput) ?? 0.0;
+        const netAmount = parseOptionalAmountValue(netInput) ?? 0.0;
+        const stampDutyAmount = resolveStampAmount();
+        const pmPercent = parseOptionalAmountValue(pmPercentInput) ?? 0.0;
+        const vatAmount = grossAmount - netAmount;
+        const pmBaseAmount = netAmount - stampDutyAmount;
+        const pmAmount = pmBaseAmount * (pmPercent / 100.0);
+        const effectiveAmount = pmBaseAmount - pmAmount;
+
+        setText(options.grossPreviewId, formatEuroAmount(grossAmount));
+        setText(options.vatPreviewId, `-${formatEuroAmount(vatAmount)}`);
+        setText(options.stampPreviewId, `-${formatEuroAmount(stampDutyAmount)}`);
+        setText(options.pmBasePreviewId, formatEuroAmount(pmBaseAmount));
+        setText(options.pmPercentPreviewId, formatFixedAmount(pmPercent));
+        setText(options.pmAmountPreviewId, `-${formatEuroAmount(pmAmount)}`);
+        setText(options.effectivePreviewId, formatEuroAmount(effectiveAmount));
+      }
+
+      if (stampCheckbox) {
+        stampCheckbox.addEventListener('change', function(){
+          syncStampVisibility(true);
+          updatePreview();
+        });
+      }
+
+      if (stampInput) {
+        stampInput.addEventListener('input', updatePreview);
+      }
+
+      if (pmPercentInput) {
+        pmPercentInput.addEventListener('input', updatePreview);
+      }
+
+      if (platformSelect) {
+        platformSelect.addEventListener('change', function(){
+          const isDirectBooking = directBookingPlatformId && String(platformSelect.value || '') === directBookingPlatformId;
+          if (isDirectBooking && stampCheckbox && !stampCheckbox.checked) {
+            stampCheckbox.checked = true;
+            syncStampVisibility(true);
+          }
+          updatePreview();
+        });
+      }
+
+      syncStampVisibility(Boolean(stampCheckbox && stampCheckbox.checked));
+      updatePreview();
+      return { updatePreview };
+    }
+
+    function setupIncomeAmountSync(formId, grossId, netId, vatId, vatAmountId, options){
+      const form = document.getElementById(formId);
+      const grossInput = document.getElementById(grossId);
+      const netInput = document.getElementById(netId);
+      const vatInput = document.getElementById(vatId);
+      const vatAmountInput = vatAmountId ? document.getElementById(vatAmountId) : null;
+      const settings = Object.assign({ onAmountsChange: null }, options || {});
+      if (!form || !grossInput || !netInput || !vatInput) {
+        return;
+      }
+
+      let lastEditedField = (grossInput.value.trim() === '' && netInput.value.trim() !== '') ? 'net' : 'gross';
+
+      function clearAmountValidity(){
+        grossInput.setCustomValidity('');
+        netInput.setCustomValidity('');
+      }
+
+      function parseAmount(input){
+        const rawValue = input.value.trim();
+        if (rawValue === '') {
+          return null;
+        }
+        const parsedValue = parseFloat(rawValue);
+        return Number.isFinite(parsedValue) ? parsedValue : null;
+      }
+
+      function formatAmount(value){
+        return Number.isFinite(value) ? value.toFixed(2) : '';
+      }
+
+      function resolveVat(){
+        const parsedVat = parseAmount(vatInput);
+        return parsedVat === null ? 0.0 : parsedVat;
+      }
+
+      function updateVatAmount(gross, net){
+        if (!vatAmountInput) {
+          return;
+        }
+        if (gross === null || net === null) {
+          vatAmountInput.value = '';
+          return;
+        }
+        vatAmountInput.value = formatAmount(gross - net);
+      }
+
+      function resolveVatFactor(){
+        return 1 + (resolveVat() / 100.0);
+      }
+
+      function syncFromGross(){
+        const gross = parseAmount(grossInput);
+        clearAmountValidity();
+        if (gross === null) {
+          netInput.value = '';
+          updateVatAmount(null, null);
+          if (typeof settings.onAmountsChange === 'function') {
+            settings.onAmountsChange();
+          }
+          return;
+        }
+        const vatFactor = resolveVatFactor();
+        if (vatFactor <= 0) {
+          netInput.value = '';
+          updateVatAmount(null, null);
+          if (typeof settings.onAmountsChange === 'function') {
+            settings.onAmountsChange();
+          }
+          return;
+        }
+        const net = gross / vatFactor;
+        netInput.value = formatAmount(net);
+        updateVatAmount(gross, net);
+        if (typeof settings.onAmountsChange === 'function') {
+          settings.onAmountsChange();
+        }
+      }
+
+      function syncFromNet(){
+        const net = parseAmount(netInput);
+        clearAmountValidity();
+        if (net === null) {
+          grossInput.value = '';
+          updateVatAmount(null, null);
+          if (typeof settings.onAmountsChange === 'function') {
+            settings.onAmountsChange();
+          }
+          return;
+        }
+        const vatFactor = resolveVatFactor();
+        if (vatFactor <= 0) {
+          grossInput.value = '';
+          updateVatAmount(null, null);
+          if (typeof settings.onAmountsChange === 'function') {
+            settings.onAmountsChange();
+          }
+          return;
+        }
+        const gross = net * vatFactor;
+        grossInput.value = formatAmount(gross);
+        updateVatAmount(gross, net);
+        if (typeof settings.onAmountsChange === 'function') {
+          settings.onAmountsChange();
+        }
+      }
+
+      grossInput.addEventListener('input', function(){
+        lastEditedField = 'gross';
+        syncFromGross();
+      });
+
+      netInput.addEventListener('input', function(){
+        lastEditedField = 'net';
+        syncFromNet();
+      });
+
+      vatInput.addEventListener('input', function(){
+        if (lastEditedField === 'net') {
+          syncFromNet();
+          return;
+        }
+        syncFromGross();
+      });
+
+      form.addEventListener('submit', function(event){
+        clearAmountValidity();
+        if (grossInput.value.trim() !== '' || netInput.value.trim() !== '') {
+          return;
+        }
+        const message = 'Inserisci un importo lordo o imponibile.';
+        grossInput.setCustomValidity(message);
+        netInput.setCustomValidity(message);
+        grossInput.reportValidity();
+        event.preventDefault();
+      });
+
+      if (lastEditedField === 'net') {
+        syncFromNet();
+      } else {
+        syncFromGross();
+      }
+    }
+
+    const editIncomePreview = setupIncomeStampAndPreview({
+      grossId: 'income_edit_gross_amount',
+      netId: 'income_edit_net_amount',
+      pmPercentId: 'income_edit_pm_percent',
+      stampCheckboxId: 'income_edit_has_stamp_duty',
+      stampInputId: 'income_edit_stamp_duty_amount',
+      stampGroupId: 'income_edit_stamp_duty_group',
+      platformId: 'income_edit_platform_id',
+      defaultStampDutyAmount: {{ default_stamp_duty_amount|tojson }},
+      directBookingPlatformId: {{ direct_booking_platform_id|tojson }},
+      grossPreviewId: 'income_edit_calc_gross',
+      vatPreviewId: 'income_edit_calc_vat',
+      stampPreviewId: 'income_edit_calc_stamp',
+      pmBasePreviewId: 'income_edit_calc_pm_base',
+      pmPercentPreviewId: 'income_edit_calc_pm_percent',
+      pmAmountPreviewId: 'income_edit_calc_pm_amount',
+      effectivePreviewId: 'income_edit_calc_effective'
+    });
+
+    setupIncomeAmountSync('incomeEditForm', 'income_edit_gross_amount', 'income_edit_net_amount', 'income_edit_vat_percent', 'income_edit_vat_amount', { onAmountsChange: editIncomePreview.updatePreview });
+  });
+</script>
 {% endblock %}

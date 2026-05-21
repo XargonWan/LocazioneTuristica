@@ -27,6 +27,16 @@
         </div>
       </form>
       <form method="post" action="/settings/update" class="mb-3">
+        <input type="hidden" name="key" value="default_stamp_duty">
+        <input type="hidden" name="next" value="{{ return_url }}">
+        <label class="form-label" for="default-stamp-duty">Marca da bollo predefinita</label>
+        <div class="d-flex">
+          <input id="default-stamp-duty" class="form-control me-2" name="value" value="{{ (settings | selectattr('key', 'equalto', 'default_stamp_duty') | list | first).value if settings | selectattr('key', 'equalto', 'default_stamp_duty') | list else '2.0' }}">
+          <button class="btn btn-primary">Salva marca da bollo</button>
+        </div>
+        <div class="form-text">Valore proposto quando attivi la marca da bollo su un'entrata.</div>
+      </form>
+      <form method="post" action="/settings/update" class="mb-3">
         <div class="d-flex">
           <input type="hidden" name="key" value="max_upload_size">
           <input type="hidden" name="next" value="{{ return_url }}">

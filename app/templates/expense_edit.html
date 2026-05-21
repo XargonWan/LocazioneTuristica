@@ -37,9 +37,13 @@
             <input type="number" name="gross_amount" step="0.01" class="form-control" id="expense_edit_gross_amount" value="{{ expense.gross_amount }}">
           </div>
           <div class="mb-3">
-            <label>Importo netto</label>
+            <label title="L'imponibile e l'importo al netto dell'IVA, base su cui si calcola l'IVA.">Imponibile</label>
             <input type="number" name="net_amount" step="0.01" class="form-control" id="expense_edit_net_amount" value="{{ expense.net_amount }}">
-            <small class="text-muted">Puoi inserire il lordo o il netto: l'altro importo viene calcolato automaticamente in base all'IVA.</small>
+            <small class="text-muted">Puoi inserire il lordo o l'imponibile: l'altro importo viene calcolato automaticamente in base all'IVA.</small>
+          </div>
+          <div class="mb-3">
+            <label>IVA calcolata</label>
+            <input type="number" step="0.01" class="form-control" id="expense_edit_vat_amount" value="" readonly tabindex="-1">
           </div>
           <div class="mb-3">
             <label>IVA (%)</label>
@@ -251,11 +255,12 @@
 </div>
 <script>
   document.addEventListener('DOMContentLoaded', function(){
-    function setupExpenseAmountSync(formId, grossId, netId, vatId){
+    function setupExpenseAmountSync(formId, grossId, netId, vatId, vatAmountId){
       const form = document.getElementById(formId);
       const grossInput = document.getElementById(grossId);
       const netInput = document.getElementById(netId);
       const vatInput = document.getElementById(vatId);
+      const vatAmountInput = vatAmountId ? document.getElementById(vatAmountId) : null;
       if (!form || !grossInput || !netInput || !vatInput) {
         return;
       }
@@ -285,15 +290,38 @@
         return parsedVat === null ? 0.0 : parsedVat;
       }
 
+      function updateVatAmount(gross, net){
+        if (!vatAmountInput) {
+          return;
+        }
+        if (gross === null || net === null) {
+          vatAmountInput.value = '';
+          return;
+        }
+        vatAmountInput.value = formatAmount(gross - net);
+      }
+
+      function resolveVatFactor(){
+        return 1 + (resolveVat() / 100.0);
+      }
+
       function syncFromGross(){
         const gross = parseAmount(grossInput);
         clearAmountValidity();
         if (gross === null) {
           netInput.value = '';
+          updateVatAmount(null, null);
           return;
         }
-        const vat = resolveVat();
-        netInput.value = formatAmount(gross * (1 - (vat / 100.0)));
+        const vatFactor = resolveVatFactor();
+        if (vatFactor <= 0) {
+          netInput.value = '';
+          updateVatAmount(null, null);
+          return;
+        }
+        const net = gross / vatFactor;
+        netInput.value = formatAmount(net);
+        updateVatAmount(gross, net);
       }
 
       function syncFromNet(){
@@ -301,11 +329,18 @@
         clearAmountValidity();
         if (net === null) {
           grossInput.value = '';
+          updateVatAmount(null, null);
           return;
         }
-        const vat = resolveVat();
-        const vatFactor = 1 - (vat / 100.0);
-        grossInput.value = vatFactor <= 0 ? '' : formatAmount(net / vatFactor);
+        const vatFactor = resolveVatFactor();
+        if (vatFactor <= 0) {
+          grossInput.value = '';
+          updateVatAmount(null, null);
+          return;
+        }
+        const gross = net * vatFactor;
+        grossInput.value = formatAmount(gross);
+        updateVatAmount(gross, net);
       }
 
       grossInput.addEventListener('input', function(){
@@ -331,15 +366,21 @@
         if (grossInput.value.trim() !== '' || netInput.value.trim() !== '') {
           return;
         }
-        const message = 'Inserisci un importo lordo o netto.';
+        const message = 'Inserisci un importo lordo o imponibile.';
         grossInput.setCustomValidity(message);
         netInput.setCustomValidity(message);
         grossInput.reportValidity();
         event.preventDefault();
       });
+
+      if (lastEditedField === 'net') {
+        syncFromNet();
+      } else {
+        syncFromGross();
+      }
     }
 
-    setupExpenseAmountSync('expenseEditForm', 'expense_edit_gross_amount', 'expense_edit_net_amount', 'expense_edit_vat_percent');
+    setupExpenseAmountSync('expenseEditForm', 'expense_edit_gross_amount', 'expense_edit_net_amount', 'expense_edit_vat_percent', 'expense_edit_vat_amount');
   });
 </script>
 {% endblock %}

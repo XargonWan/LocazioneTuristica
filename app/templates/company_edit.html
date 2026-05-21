@@ -23,7 +23,7 @@
               <input class="form-control" type="number" step="0.01" min="0" name="default_gross_amount" value="{{ '%.2f'|format(company.default_gross_amount) if company.default_gross_amount is not none else '' }}">
             </div>
             <div class="mb-3">
-              <label class="form-label">Costo standard netto (€)</label>
+              <label class="form-label">Costo standard imponibile (€)</label>
               <input class="form-control" type="number" step="0.01" min="0" name="default_net_amount" value="{{ '%.2f'|format(company.default_net_amount) if company.default_net_amount is not none else '' }}">
             </div>
           </div>

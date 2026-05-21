@@ -40,6 +40,31 @@ def test_bulk_edit_incomes():
         db.close()
 
 
+def test_bulk_edit_incomes_calculates_gross_from_imponibile():
+    db = SessionLocal()
+    try:
+        i1 = Income(apartment_id=None, platform_id=None, date='2025-01-01', gross_amount=100.0, vat_percent=22.0, net_amount=81.97, pm_percent=0.0, pm_amount=0.0, net_after_pm=81.97, notes='bulk-inc-1')
+        i2 = Income(apartment_id=None, platform_id=None, date='2025-02-01', gross_amount=30.0, vat_percent=10.0, net_amount=27.27, pm_percent=0.0, pm_amount=0.0, net_after_pm=27.27, notes='bulk-inc-2')
+        db.add_all([i1, i2])
+        db.commit()
+        ids = f"{i1.id},{i2.id}"
+        resp = client.post(
+            '/money/incomes/bulk_edit',
+            data={'ids': ids, 'net_amount': '78.0', 'vat_percent': '22.0'},
+            follow_redirects=False,
+        )
+        assert resp.status_code in (200, 303)
+        db.refresh(i1)
+        db.refresh(i2)
+        assert float(i1.net_amount) == 78.0 and float(i2.net_amount) == 78.0
+        assert float(i1.gross_amount) == 95.16 and float(i2.gross_amount) == 95.16
+        assert float(i1.vat_percent) == 22.0 and float(i2.vat_percent) == 22.0
+    finally:
+        db.query(Income).filter(Income.id.in_([i1.id, i2.id])).delete()
+        db.commit()
+        db.close()
+
+
 def test_bulk_delete_incomes_series():
     db = SessionLocal()
     try:
@@ -122,7 +147,7 @@ def test_bulk_edit_expenses():
         assert resp.status_code in (200, 303)
         db.refresh(e1); db.refresh(e2)
         assert e1.notes == 'bulk-exp' and e2.notes == 'bulk-exp'
-        assert float(e1.pm_percent) == 5.0
+        assert float(e1.pm_percent) == 0.0 and float(e1.pm_amount) == 0.0
     finally:
         db.query(Expense).filter(Expense.id.in_([e1.id, e2.id])).delete()
         db.commit(); db.close()
@@ -143,7 +168,7 @@ def test_bulk_edit_expenses_calculates_gross_from_net():
         assert resp.status_code in (200, 303)
         db.refresh(e1); db.refresh(e2)
         assert float(e1.net_amount) == 78.0 and float(e2.net_amount) == 78.0
-        assert float(e1.gross_amount) == 100.0 and float(e2.gross_amount) == 100.0
+        assert float(e1.gross_amount) == 95.16 and float(e2.gross_amount) == 95.16
         assert float(e1.vat_percent) == 22.0 and float(e2.vat_percent) == 22.0
     finally:
         db.query(Expense).filter(Expense.id.in_([e1.id, e2.id])).delete()
@@ -187,8 +212,7 @@ def test_bulk_delete_expenses_redirects_to_next():
         db.add(e1); db.commit()
         resp = client.post('/money/expenses/bulk_delete', data={'ids': str(e1.id), 'next': '/overview'}, follow_redirects=False)
         assert resp.status_code in (200, 303)
-        # FastAPI TestClient follows redirects by default; ensure final path is /overview
-        assert resp.request.url.path == '/overview'
+        assert resp.headers['location'] == '/overview'
         rem = db.query(Expense).filter(Expense.id == e1.id).first()
         assert rem is None
     finally:
@@ -204,21 +228,19 @@ def test_overview_page_net_calculation():
         db.add(pm)
         db.commit()
         inc = Income(apartment_id=None, platform_id=None, date='2031-01-01', gross_amount=100.0,
-                     vat_percent=22.0, net_amount=80.0, pm_percent=10.0, pm_amount=10.0, net_after_pm=70.0,
+                     vat_percent=22.0, net_amount=81.97, pm_percent=10.0, pm_amount=10.0, net_after_pm=71.97,
                      notes='rent')
         # expense small enough to keep pm_due positive when subtracted
         exp = Expense(apartment_id=None, date='2031-01-01', gross_amount=5.0,
-                      vat_percent=22.0, net_amount=3.9, pm_percent=0.0, pm_amount=0.0, net_after_pm=3.9,
+                      vat_percent=22.0, net_amount=4.10, pm_percent=0.0, pm_amount=0.0, net_after_pm=4.10,
                       associated_pm_id=pm.id,
                       notes='payment')
         db.add_all([inc, exp]); db.commit()
         resp = client.get('/overview?year=2031')
         assert resp.status_code == 200
         text = resp.text
-        # the month total should be net_after_pm income (70) minus gross expense (5) = 65
-        assert 'Gennaio - Risultato del mese: <span class="net-total net-positive">€65.00' in text
-        # pm_due initially 10 from income, minus 3.90 payment net = 6.10
-        assert 'PM ancora da versare: €6.10' in text
+        assert 'Gennaio - Risultato del mese: <span class="net-total net-positive">€68.77' in text
+        assert 'PM ancora da versare: €4.10' in text
     finally:
         # cleanup inserted data
         db.query(Income).filter(Income.id == inc.id).delete()
@@ -241,10 +263,10 @@ def test_overview_page_annual_totals_split_real_and_virtual():
             date='2032-01-10',
             gross_amount=100.0,
             vat_percent=22.0,
-            net_amount=80.0,
+            net_amount=81.97,
             pm_percent=10.0,
             pm_amount=10.0,
-            net_after_pm=70.0,
+            net_after_pm=71.97,
             notes='annual-rent',
         )
         regular_expense = Expense(
@@ -252,10 +274,10 @@ def test_overview_page_annual_totals_split_real_and_virtual():
             date='2032-01-12',
             gross_amount=15.0,
             vat_percent=22.0,
-            net_amount=11.7,
+            net_amount=12.30,
             pm_percent=0.0,
             pm_amount=0.0,
-            net_after_pm=11.7,
+            net_after_pm=12.30,
             notes='maintenance',
         )
         pm_payment = Expense(
@@ -263,10 +285,10 @@ def test_overview_page_annual_totals_split_real_and_virtual():
             date='2032-01-20',
             gross_amount=6.0,
             vat_percent=22.0,
-            net_amount=4.68,
+            net_amount=4.92,
             pm_percent=0.0,
             pm_amount=0.0,
-            net_after_pm=4.68,
+            net_after_pm=4.92,
             associated_pm_id=pm.id,
             notes='pm-payment',
         )
@@ -276,12 +298,12 @@ def test_overview_page_annual_totals_split_real_and_virtual():
         resp = client.get('/overview?year=2032')
         assert resp.status_code == 200
         text = resp.text
-        assert 'Entrate nette:</strong> <span>€80.00</span>' in text
+        assert 'Entrate dopo IVA e bollo:</strong> <span>€81.97</span>' in text
         assert 'Spese:</strong> <span>€15.00</span>' in text
-        assert 'PM gia versato (netto):</strong> <span>€4.68</span>' in text
-        assert 'PM ancora da versare:</strong> <span>€5.32</span>' in text
-        assert 'Gran totale reale:</strong> <span class="net-total net-positive">€59.00</span>' in text
-        assert 'Gran totale virtuale:</strong> <span class="net-total net-positive">€53.68</span>' in text
+        assert 'PM gia versato:</strong> <span>€4.92</span>' in text
+        assert 'PM ancora da versare:</strong> <span>€3.28</span>' in text
+        assert 'Gran totale reale:</strong> <span class="net-total net-positive">€62.05</span>' in text
+        assert 'Gran totale virtuale:</strong> <span class="net-total net-positive">€58.77</span>' in text
         assert 'id="overview-table"' not in text
         assert '<th>Mese</th>' not in text
     finally:
@@ -414,7 +436,7 @@ def test_api_stats_monthly_all_years_aggregates_same_month_and_pm_due():
                       vat_percent=0.0, net_amount=30.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=30.0,
                       notes='ops')
         pm_payment = Expense(apartment_id=None, date='2038-02-20', gross_amount=15.0,
-                             vat_percent=22.0, net_amount=11.7, associated_pm_id=pm.id,
+                             vat_percent=22.0, net_amount=12.3, associated_pm_id=pm.id,
                              notes='pm payment')
         db.add_all([inc1, inc2, exp, pm_payment])
         db.commit()
@@ -426,10 +448,10 @@ def test_api_stats_monthly_all_years_aggregates_same_month_and_pm_due():
         assert feb is not None
         assert feb['income'] == 270.0
         assert feb['expense'] == 15.0
-        assert payload['totals']['pm_paid'] == 11.7
-        assert payload['totals']['pm_due'] == 18.3
+        assert payload['totals']['pm_paid'] == 12.3
+        assert payload['totals']['pm_due'] == 17.7
         assert payload['totals']['grand_total_real'] == 285.0
-        assert payload['totals']['grand_total_virtual'] == 266.7
+        assert payload['totals']['grand_total_virtual'] == 267.3
     finally:
         db.query(Income).filter(Income.id.in_([inc1.id, inc2.id])).delete()
         db.query(Expense).filter(Expense.id.in_([exp.id, pm_payment.id])).delete()
@@ -448,22 +470,21 @@ def test_pm_total_subtracts_expense_payments():
                      vat_percent=0.0, net_amount=100.0, pm_percent=10.0, pm_amount=10.0, net_after_pm=90.0,
                      associated_pm_id=pm.id)
         exp = Expense(apartment_id=None, date='2025-03-05', gross_amount=20.0,
-                      vat_percent=22.0, net_amount=15.6, associated_pm_id=pm.id)
+                      vat_percent=22.0, net_amount=16.39, associated_pm_id=pm.id)
         db.add_all([inc, exp]); db.commit()
         # call pm edit view which reports pm_total
         resp = client.get(f'/anagrafiche/property-manager/{pm.id}/edit?year=2025')
         assert resp.status_code == 200
         text = resp.text
-        # pm_total should equal 10 (from income) minus 15.60 (expense net) = -5.60
-        assert '€-5.60' in text
+        assert '€-6.39' in text
         # if we also check stats endpoint, the pm_totals entry should reflect same
         resp2 = client.get('/stats?year=2025')
         assert resp2.status_code == 200
-        assert f'€-5.6' in resp2.text
+        assert '€-6.39' in resp2.text
         resp3 = client.get('/anagrafiche?year=2025')
         assert resp3.status_code == 200
         assert 'Residuo PM da pagare (anno):' in resp3.text
-        assert f'€-5.60' in resp3.text
+        assert '€-6.39' in resp3.text
     finally:
         db.query(Income).filter(Income.id == inc.id).delete()
         db.query(Expense).filter(Expense.id == exp.id).delete()

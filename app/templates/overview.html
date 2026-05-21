@@ -63,7 +63,7 @@
                               {% endif %}
                                 <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - Risultato del mese: <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
                               <div>
-                                  <small class="text-success">Incassi netti disponibili: €{{ '%.2f'|format(m.income) }}</small>
+                                  <small class="text-success">Incassi disponibili: €{{ '%.2f'|format(m.income) }}</small>
                                   <small class="text-danger ms-3">Spese lorde: €{{ '%.2f'|format(m.expense) }}</small>
                                 {% if m.pm_due and m.pm_due > 0 %}
                                     <small class="ms-3 text-danger">PM ancora da versare: €{{ '%.2f'|format(m.pm_due) }}</small>
@@ -144,14 +144,14 @@
             {% set grand_total_virtual_class = 'net-zero' %}
           {% endif %}
           <div class="d-flex flex-wrap gap-3 align-items-start">
-            <div><strong title="Entrate nette dell'anno, al netto dell'IVA ma prima dei versamenti al PM.">Entrate nette:</strong> <span>€{{ '%.2f'|format(annual_income_net_total) }}</span></div>
+            <div><strong title="Entrate dell'anno dopo IVA e marca da bollo, prima dei versamenti al PM.">Entrate dopo IVA e bollo:</strong> <span>€{{ '%.2f'|format(annual_income_net_total) }}</span></div>
             <div><strong title="Spese registrate nell'anno, esclusi i pagamenti fatti ai PM che sono mostrati a parte.">Spese:</strong> <span>€{{ '%.2f'|format(annual_expense_total) }}</span></div>
             <div><strong title="Quanto hai effettivamente gia versato ai PM nell'anno tramite spese associate a un PM.">PM gia versato:</strong> <span>€{{ '%.2f'|format(annual_pm_paid_total) }}</span></div>
             {% if annual_pm_due_total > 0 %}
               <div><strong title="Quota PM maturata sulle entrate dell'anno ma non ancora versata.">PM ancora da versare:</strong> <span>€{{ '%.2f'|format(annual_pm_due_total) }}</span></div>
             {% endif %}
             <div class="w-100"></div>
-            <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati: entrate nette meno spese gia sostenute meno PM gia dato. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span class="net-total {{ grand_total_real_class }}">€{{ '%.2f'|format(grand_total_real) }}</span></div>
+            <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati: entrate dopo IVA e bollo meno spese gia sostenute meno PM gia dato. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span class="net-total {{ grand_total_real_class }}">€{{ '%.2f'|format(grand_total_real) }}</span></div>
             <div><strong class="text-decoration-underline" title="Saldo virtuale ipotizzando di aver gia versato tutto il PM ancora dovuto.">Gran totale virtuale:</strong> <span class="net-total {{ grand_total_virtual_class }}">€{{ '%.2f'|format(grand_total_virtual) }}</span></div>
           </div>
         </div>
@@ -202,7 +202,7 @@
                               {% endif %}
                               <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
                               {% if item.type == 'income' and item.net_amount is defined %}
-                                <p><strong>Importo netto:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
+                                <p><strong>Imponibile:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
                               {% endif %}
                               <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
                               {% if item.associated_pm_name %}
@@ -254,8 +254,17 @@
                         {% endif %}
                         <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(item.gross_amount) }}</p>
                                 {% if item.type == 'income' and item.net_amount is defined %}
-                                  <p><strong>Importo netto:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
+                                  <p><strong>Imponibile:</strong> €{{ '%.2f'|format(item.net_amount) }}</p>
                                 {% endif %}
+                        <div class="alert alert-light border">
+                          <div class="fw-semibold mb-2">Calcolo entrata effettiva</div>
+                          <div>Entrata inserita: <strong>€{{ '%.2f'|format(item.gross_amount) }}</strong></div>
+                          <div>IVA: <strong>-€{{ '%.2f'|format((item.gross_amount if item.gross_amount is not none else 0.0) - (item.net_amount if item.net_amount is defined and item.net_amount is not none else 0.0)) }}</strong></div>
+                          <div>Marca da bollo: <strong>-€{{ '%.2f'|format(item.stamp_duty_amount if item.stamp_duty_amount is defined else 0.0) }}</strong></div>
+                          <div>Base PM: <strong>€{{ '%.2f'|format(item.pm_base_amount if item.pm_base_amount is defined else (item.net_amount if item.net_amount is defined else 0.0)) }}</strong></div>
+                          <div>PM ({{ (item.pm_percent if item.pm_percent is defined and item.pm_percent is not none else 0) }}%): <strong>-€{{ '%.2f'|format(item.pm_amount if item.pm_amount is defined and item.pm_amount is not none else 0.0) }}</strong></div>
+                          <div>Entrata effettiva: <strong>€{{ '%.2f'|format(item.net_after_pm if item.net_after_pm is defined and item.net_after_pm is not none else (item.pm_base_amount if item.pm_base_amount is defined else (item.net_amount if item.net_amount is defined else 0.0))) }}</strong></div>
+                        </div>
                         <p><strong>Note:</strong> {{ item.notes or '-' }}</p>
                         {% if item.associated_pm_name %}
                           <p><strong>Associata a (PM):</strong> {{ item.associated_pm_name }}</p>
@@ -313,7 +322,7 @@
           <input type="text" name="notes" class="form-control">
         </div>
         <div class="mb-2">
-          <label>Importo netto</label>
+          <label title="L'imponibile e l'importo al netto dell'IVA, base su cui si calcola l'IVA.">Imponibile</label>
           <input type="number" name="net_amount" step="0.01" class="form-control">
         </div>
         <div class="mb-2">

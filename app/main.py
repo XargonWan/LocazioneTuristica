@@ -9,7 +9,7 @@ from .backup import create_backup, finish_request_backup_tracking, get_request_b
 from .db import init_db, SessionLocal
 from .models import Attachment, Income, Expense
 from .auth_utils import get_current_user
-from .utils import expand_open_recurrences_to_current_year, get_setting_int
+from .utils import expand_open_recurrences_to_current_year, get_income_effective_amount, get_income_pm_amount, get_income_pm_base_amount, get_income_stamp_duty_amount, get_pm_payment_settlement_amount, get_setting_int
 
 app = FastAPI(title="LocazioneTuristica")
 
@@ -202,17 +202,14 @@ async def overview(request: Request):
             except Exception:
                 continue
             if d.year == year:
-                pm_amount = float(getattr(inc, 'pm_amount', 0.0) or 0.0)
-                net_amount = float(getattr(inc, 'net_amount', 0.0) or 0.0)
+                pm_amount = get_income_pm_amount(inc)
+                income_before_pm = get_income_pm_base_amount(inc)
                 # use net_after_pm if it exists (computed when income is created/edited);
                 # fall back to net_amount minus pm_amount to avoid counting VAT or PM twice
-                net_val = float(getattr(inc, 'net_after_pm', None) or 0.0)
-                if not net_val:
-                    # inc.net_after_pm may be zero when not set, so compute defensively
-                    net_val = net_amount - pm_amount
+                net_val = get_income_effective_amount(inc)
                 months[d.month]['income'] += net_val
                 months[d.month]['pm_due'] += pm_amount
-                annual_income_net_total += net_amount
+                annual_income_net_total += income_before_pm
                 annual_pm_accrued_total += pm_amount
         for exp in expenses:
             try:
@@ -225,8 +222,9 @@ async def overview(request: Request):
                 months[d.month]['expense'] += gross_amount
                 # if this expense represents a payment to a PM, reduce the outstanding due
                 if exp.associated_pm_id:
-                    months[d.month]['pm_due'] -= gross_amount
-                    annual_pm_paid_total += gross_amount
+                    settlement_amount = get_pm_payment_settlement_amount(exp)
+                    months[d.month]['pm_due'] -= settlement_amount
+                    annual_pm_paid_total += settlement_amount
                 else:
                     annual_expense_total += gross_amount
         months_list = [{'month': m, 'income': months[m]['income'], 'expense': months[m]['expense']} for m in sorted(months.keys())]
@@ -275,7 +273,7 @@ async def overview(request: Request):
                         associated_pm_name = f"{inc.associated_pm.first_name} {inc.associated_pm.last_name}"
                 except Exception:
                     associated_pm_name = None
-                item = {'type': 'income', 'date': d, 'raw_date': inc.date, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'apartment_id': getattr(inc, 'apartment_id', None), 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': float(getattr(inc, 'pm_amount', 0.0) or 0.0), 'cleaning_emoji': '🧹' if getattr(inc, 'apartment_id', None) else ''}
+                item = {'type': 'income', 'date': d, 'raw_date': inc.date, 'gross_amount': float(inc.gross_amount), 'notes': inc.notes if getattr(inc, 'notes', None) else '', 'id': inc.id, 'apartment_id': getattr(inc, 'apartment_id', None), 'associated_pm_name': associated_pm_name, 'pm_percent': float(getattr(inc, 'pm_percent', 0.0) or 0.0), 'pm_amount': get_income_pm_amount(inc), 'net_after_pm': get_income_effective_amount(inc), 'pm_base_amount': get_income_pm_base_amount(inc), 'stamp_duty_amount': get_income_stamp_duty_amount(inc), 'has_stamp_duty': bool(getattr(inc, 'has_stamp_duty', False)), 'cleaning_emoji': '🧹' if getattr(inc, 'apartment_id', None) else ''}
                 item.update(recurrence_payload(inc))
                 entries_by_month[d.month].append(item)
                 # include net_amount so overview modals can display netto computed from VAT

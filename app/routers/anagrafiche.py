@@ -11,7 +11,7 @@ from app.models import CleaningService
 from app.models import Income, Expense
 from datetime import datetime
 from app.debug import log_request_form
-from app.utils import expand_open_recurrences_to_current_year, get_pm_payment_settlement_amount
+from app.utils import expand_open_recurrences_to_current_year, get_income_effective_amount as calculate_income_effective_amount, get_income_pm_amount as calculate_income_pm_amount, get_pm_payment_settlement_amount
 
 router = APIRouter(prefix="/anagrafiche")
 from app.main import templates
@@ -64,12 +64,8 @@ async def index(request: Request):
             if not pm_id:
                 continue
             # pm_amount may be stored; if not, compute via PM percent
-            pm_amount = float(inc.pm_amount or 0.0)
-            if pm_amount == 0.0:
-                pm = pm_map.get(pm_id)
-                if pm:
-                    pm_pct = float(pm.percent or 0.0)
-                    pm_amount = float(inc.gross_amount or 0.0) * (pm_pct / 100.0)
+            pm = pm_map.get(pm_id)
+            pm_amount = calculate_income_pm_amount(inc, pm_percent=float(pm.percent or 0.0)) if pm else calculate_income_pm_amount(inc)
             pm_totals[pm_id] = pm_totals.get(pm_id, 0.0) + pm_amount
         expenses = db.query(Expense).all()
         for exp in expenses:
@@ -167,9 +163,7 @@ async def edit_pm_get(request: Request, pm_id: int):
                 continue
             pm_id_for_income = inc.associated_pm_id or (inc.apartment.property_manager_id if inc.apartment else None)
             if pm_id_for_income == pm.id:
-                pm_amount = float(inc.pm_amount or 0.0)
-                if pm_amount == 0.0:
-                    pm_amount = float(inc.gross_amount or 0.0) * (float(pm.percent or 0.0) / 100.0)
+                pm_amount = calculate_income_pm_amount(inc, pm_percent=float(pm.percent or 0.0))
                 pm_total += pm_amount
         # subtract any explicit expense payments to this PM
         from app.models import Expense
@@ -237,9 +231,8 @@ async def edit_pm_post(request: Request, pm_id: int, first_name: str = Form(...)
             for inc in db.query(Income).filter(Income.associated_pm_id == pm.id, Income.pm_percent == old_percent).all():
                 inc.pm_percent = percent
                 try:
-                    gross = float(inc.gross_amount or 0.0)
-                    inc.pm_amount = round(gross * (percent / 100.0), 2)
-                    inc.net_after_pm = round(float(inc.net_amount or 0.0) - inc.pm_amount, 2)
+                    inc.pm_amount = calculate_income_pm_amount(inc, pm_percent=percent)
+                    inc.net_after_pm = calculate_income_effective_amount(inc, pm_percent=percent)
                 except Exception:
                     pass
                 db.add(inc)

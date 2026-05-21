@@ -195,7 +195,7 @@ def test_add_expense_calculates_gross_from_net():
         expense = db.query(Expense).filter(Expense.notes == note).first()
         assert expense is not None
         assert float(expense.net_amount) == 78.0
-        assert float(expense.gross_amount) == 100.0
+        assert float(expense.gross_amount) == 95.16
     finally:
         if expense is not None:
             db.query(Expense).filter(Expense.id == expense.id).delete(synchronize_session=False)

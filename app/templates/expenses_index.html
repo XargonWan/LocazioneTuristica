@@ -47,9 +47,13 @@
         </div>
       </div>
       <div class="mb-3">
-        <label>Importo netto</label>
+        <label title="L'imponibile e l'importo al netto dell'IVA, base su cui si calcola l'IVA.">Imponibile</label>
         <input type="number" name="net_amount" step="0.01" class="form-control" id="expense_net_amount" value="" placeholder="Calcolato automaticamente se inserisci il lordo">
-        <small class="text-muted">Puoi inserire il lordo o il netto: l'altro importo viene calcolato automaticamente in base all'IVA.</small>
+        <small class="text-muted">Puoi inserire il lordo o l'imponibile: l'altro importo viene calcolato automaticamente in base all'IVA.</small>
+      </div>
+      <div class="mb-3">
+        <label>IVA calcolata</label>
+        <input type="number" step="0.01" class="form-control" id="expense_vat_amount" value="" readonly tabindex="-1">
       </div>
       <div class="mb-3">
         <label>Appartamento</label>
@@ -335,7 +339,7 @@
           <input class="form-check-input sel-expense" type="checkbox" value="{{ e.id }}" id="selExp-{{ e.id }}">
         </div>
         <div>
-            <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (netto: €{{ '%.2f'|format(e.net_amount) }} ) - PM: €{{ '%.2f'|format(e.pm_amount if e.pm_amount is not none else 0.0) }} - Netto dopo PM: €{{ '%.2f'|format(e.net_after_pm if e.net_after_pm is not none else 0.0) }} </div>
+            <div>{{ e.date|format_date }} - €{{ '%.2f'|format(e.gross_amount) }} (imponibile: €{{ '%.2f'|format(e.net_amount) }} ) - PM: €{{ '%.2f'|format(e.pm_amount if e.pm_amount is not none else 0.0) }} - Netto dopo PM: €{{ '%.2f'|format(e.net_after_pm if e.net_after_pm is not none else 0.0) }} </div>
               <small class="text-muted">{{ e.notes or ('#' ~ e.id) }}{% if e.recurrence %} 🗘{% endif %}{% if row_attachments %} <button type="button" class="btn btn-link btn-sm text-decoration-none align-baseline p-0 ms-1" data-bs-toggle="modal" data-bs-target="#expenseAttachmentsModal-{{ e.id }}" title="Apri allegati" aria-label="Apri allegati">📎</button>{% endif %}</small>
         </div>
         <span>
@@ -383,7 +387,7 @@
                     {% endif %}
                     <p><strong>Importo lordo:</strong> €{{ '%.2f'|format(e.gross_amount) }}</p>
                     <p><strong>IVA:</strong> {{ e.vat_percent }}%</p>
-                    <p><strong>Importo netto:</strong> €{{ '%.2f'|format(e.net_amount) }}</p>
+                    <p><strong>Imponibile:</strong> €{{ '%.2f'|format(e.net_amount) }}</p>
                     <p><strong>Appartamento:</strong> {{ e.apartment.name if e.apartment else '-' }}</p>
                     {% if e.associated_pm_name %}
                       <p><strong>Associata a (PM):</strong> {{ e.associated_pm_name }}</p>
@@ -447,7 +451,7 @@
                       <input type="text" name="notes" class="form-control">
                     </div>
                     <div class="mb-2">
-                      <label>Importo netto</label>
+                      <label title="L'imponibile e l'importo al netto dell'IVA, base su cui si calcola l'IVA.">Imponibile</label>
                       <input type="number" name="net_amount" step="0.01" class="form-control" id="bulk_expense_net_amount">
                     </div>
                     <div class="mb-2">
@@ -455,7 +459,11 @@
                       <input type="number" name="gross_amount" step="0.01" class="form-control" id="bulk_expense_gross_amount">
                     </div>
                     <div class="mb-2">
-                      <small class="text-muted">Puoi inserire il lordo o il netto: l'altro importo viene calcolato automaticamente in base all'IVA impostata per il bulk.</small>
+                      <label>IVA calcolata</label>
+                      <input type="number" step="0.01" class="form-control" id="bulk_expense_vat_amount" readonly tabindex="-1">
+                    </div>
+                    <div class="mb-2">
+                      <small class="text-muted">Puoi inserire il lordo o l'imponibile: l'altro importo viene calcolato automaticamente in base all'IVA impostata per il bulk.</small>
                     </div>
                     <div class="mb-2">
                       <label>Appartamento</label>
@@ -569,11 +577,12 @@
       {% endfor %}
 <script>
   document.addEventListener('DOMContentLoaded', function(){
-    function setupExpenseAmountSync(formId, grossId, netId, vatId, options){
+    function setupExpenseAmountSync(formId, grossId, netId, vatId, vatAmountId, options){
       const form = document.getElementById(formId);
       const grossInput = document.getElementById(grossId);
       const netInput = document.getElementById(netId);
       const vatInput = document.getElementById(vatId);
+      const vatAmountInput = vatAmountId ? document.getElementById(vatAmountId) : null;
       const settings = Object.assign({ requireAnyAmount: true }, options || {});
       if (!form || !grossInput || !netInput || !vatInput) {
         return;
@@ -604,15 +613,38 @@
         return parsedVat === null ? 0.0 : parsedVat;
       }
 
+      function updateVatAmount(gross, net){
+        if (!vatAmountInput) {
+          return;
+        }
+        if (gross === null || net === null) {
+          vatAmountInput.value = '';
+          return;
+        }
+        vatAmountInput.value = formatAmount(gross - net);
+      }
+
+      function resolveVatFactor(){
+        return 1 + (resolveVat() / 100.0);
+      }
+
       function syncFromGross(){
         const gross = parseAmount(grossInput);
         clearAmountValidity();
         if (gross === null) {
           netInput.value = '';
+          updateVatAmount(null, null);
           return;
         }
-        const vat = resolveVat();
-        netInput.value = formatAmount(gross * (1 - (vat / 100.0)));
+        const vatFactor = resolveVatFactor();
+        if (vatFactor <= 0) {
+          netInput.value = '';
+          updateVatAmount(null, null);
+          return;
+        }
+        const net = gross / vatFactor;
+        netInput.value = formatAmount(net);
+        updateVatAmount(gross, net);
       }
 
       function syncFromNet(){
@@ -620,11 +652,18 @@
         clearAmountValidity();
         if (net === null) {
           grossInput.value = '';
+          updateVatAmount(null, null);
           return;
         }
-        const vat = resolveVat();
-        const vatFactor = 1 - (vat / 100.0);
-        grossInput.value = vatFactor <= 0 ? '' : formatAmount(net / vatFactor);
+        const vatFactor = resolveVatFactor();
+        if (vatFactor <= 0) {
+          grossInput.value = '';
+          updateVatAmount(null, null);
+          return;
+        }
+        const gross = net * vatFactor;
+        grossInput.value = formatAmount(gross);
+        updateVatAmount(gross, net);
       }
 
       grossInput.addEventListener('input', function(){
@@ -653,16 +692,22 @@
         if (grossInput.value.trim() !== '' || netInput.value.trim() !== '') {
           return;
         }
-        const message = 'Inserisci un importo lordo o netto.';
+        const message = 'Inserisci un importo lordo o imponibile.';
         grossInput.setCustomValidity(message);
         netInput.setCustomValidity(message);
         grossInput.reportValidity();
         event.preventDefault();
       });
+
+      if (lastEditedField === 'net') {
+        syncFromNet();
+      } else {
+        syncFromGross();
+      }
     }
 
-    setupExpenseAmountSync('expenseAddForm', 'expense_gross_amount', 'expense_net_amount', 'expense_vat_percent');
-    setupExpenseAmountSync('bulkEditExpenseForm', 'bulk_expense_gross_amount', 'bulk_expense_net_amount', 'bulk_expense_vat_percent', { requireAnyAmount: false });
+    setupExpenseAmountSync('expenseAddForm', 'expense_gross_amount', 'expense_net_amount', 'expense_vat_percent', 'expense_vat_amount');
+    setupExpenseAmountSync('bulkEditExpenseForm', 'bulk_expense_gross_amount', 'bulk_expense_net_amount', 'bulk_expense_vat_percent', 'bulk_expense_vat_amount', { requireAnyAmount: false });
   });
 </script>
 <script>

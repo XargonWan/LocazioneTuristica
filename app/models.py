@@ -136,6 +136,8 @@ class Income(Base):
     gross_amount = Column(DECIMAL(10, 2), default=0.0)
     vat_percent = Column(DECIMAL(5, 2), default=22.0)
     net_amount = Column(DECIMAL(10, 2), default=0.0)
+    has_stamp_duty = Column(Boolean, default=False)
+    stamp_duty_amount = Column(DECIMAL(10, 2), default=0.0)
     pm_percent = Column(DECIMAL(5, 2), default=0.0)
     pm_amount = Column(DECIMAL(10, 2), default=0.0)
     net_after_pm = Column(DECIMAL(10, 2), default=0.0)

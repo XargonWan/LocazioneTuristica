@@ -4,11 +4,17 @@ from urllib.parse import urlencode
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from starlette.status import HTTP_303_SEE_OTHER
+from app.constants import DEFAULT_IVA, DEFAULT_STAMP_DUTY, DIRECT_BOOKING_PLATFORM_NOTE
 from app.db import SessionLocal
 from app.models import Expense, Income, Apartment, PropertyManager, Platform, Company, Attachment, Recurrence
 from app.auth_utils import admin_required, get_current_user
 from app.debug import log_request_form
 from app.utils import (
+    get_income_effective_amount,
+    get_income_pm_amount,
+    get_income_pm_base_amount,
+    get_income_stamp_duty_amount,
+    get_setting_float,
     advance_recurrence_date,
     expand_open_recurrences_to_current_year,
     format_date_value,
@@ -227,23 +233,32 @@ def _sync_income_recurrence(db, recurrence, income, reset=False):
     db.commit()
 
 
-def _resolve_expense_amounts(gross_amount, vat_percent, explicit_net_amount):
+def _resolve_taxable_amounts(gross_amount, vat_percent, explicit_net_amount):
     resolved_gross_amount = None if gross_amount is None else round(float(gross_amount), 2)
     resolved_net_amount = None if explicit_net_amount is None else round(float(explicit_net_amount), 2)
-    vat_factor = 1 - (float(vat_percent or 0.0) / 100.0)
+    vat_factor = 1 + (float(vat_percent or 0.0) / 100.0)
 
     if resolved_gross_amount is None and resolved_net_amount is None:
         raise ValueError("Either gross_amount or net_amount is required")
 
+    if vat_factor <= 0:
+        raise ValueError("vat_percent must be greater than -100")
+
     if resolved_gross_amount is None:
-        if vat_factor <= 0:
-            raise ValueError("vat_percent must be less than 100 when gross_amount is omitted")
-        resolved_gross_amount = round(resolved_net_amount / vat_factor, 2)
+        resolved_gross_amount = round(resolved_net_amount * vat_factor, 2)
 
     if resolved_net_amount is None:
-        resolved_net_amount = round(resolved_gross_amount * vat_factor, 2)
+        resolved_net_amount = round(resolved_gross_amount / vat_factor, 2)
 
     return resolved_gross_amount, resolved_net_amount
+
+
+def _resolve_expense_amounts(gross_amount, vat_percent, explicit_net_amount):
+    return _resolve_taxable_amounts(gross_amount, vat_percent, explicit_net_amount)
+
+
+def _resolve_income_amounts(gross_amount, vat_percent, explicit_net_amount):
+    return _resolve_taxable_amounts(gross_amount, vat_percent, explicit_net_amount)
 
 
 def _populate_expense_fields(expense, gross_amount, vat_percent, net_amount, entry_date, apartment_id, associated_pm_id, associated_company_id, notes, is_cleaning):
@@ -274,15 +289,46 @@ def _resolve_income_pm(db, apartment_id, associated_pm_id, associate_pm, pm_perc
     return resolved_pm_id, resolved_pm_percent
 
 
-def _populate_income_fields(income, gross_amount, vat_percent, pm_percent, entry_date, apartment_id, platform_id, associated_pm_id, notes):
-    net_amount = round(gross_amount * (1 - (vat_percent / 100.0)), 2)
-    pm_amount = round(gross_amount * (pm_percent / 100.0), 2)
+def _resolve_income_stamp_duty(has_stamp_duty, stamp_duty_amount, default_stamp_duty_amount):
+    stamp_enabled = str(has_stamp_duty or '').lower() in ('1', 'true', 'on', 'yes')
+    if not stamp_enabled:
+        return False, 0.0
+    resolved_stamp_duty_amount = default_stamp_duty_amount if stamp_duty_amount is None else float(stamp_duty_amount)
+    if resolved_stamp_duty_amount < 0:
+        raise ValueError('stamp_duty_amount must be greater than or equal to 0')
+    return True, round(resolved_stamp_duty_amount, 2)
+
+
+def _get_default_income_vat_percent():
+    return get_setting_float('default_iva', DEFAULT_IVA, minimum=0.0)
+
+
+def _get_default_stamp_duty_amount():
+    return get_setting_float('default_stamp_duty', DEFAULT_STAMP_DUTY, minimum=0.0)
+
+
+def _get_direct_booking_platform(db):
+    return (
+        db.query(Platform)
+        .filter(Platform.notes == DIRECT_BOOKING_PLATFORM_NOTE)
+        .order_by(Platform.id.asc())
+        .first()
+    )
+
+
+def _populate_income_fields(income, gross_amount, vat_percent, pm_percent, net_amount, entry_date, apartment_id, platform_id, associated_pm_id, notes, has_stamp_duty=False, stamp_duty_amount=0.0):
+    net_amount = round(float(net_amount or 0.0), 2)
+    resolved_stamp_duty_amount = round(float(stamp_duty_amount or 0.0), 2) if has_stamp_duty else 0.0
+    pm_base_amount = round(net_amount - resolved_stamp_duty_amount, 2)
+    pm_amount = round(pm_base_amount * (pm_percent / 100.0), 2)
     income.gross_amount = gross_amount
     income.vat_percent = vat_percent
     income.net_amount = net_amount
+    income.has_stamp_duty = has_stamp_duty
+    income.stamp_duty_amount = resolved_stamp_duty_amount
     income.pm_percent = pm_percent
     income.pm_amount = pm_amount
-    income.net_after_pm = round(net_amount - pm_amount, 2)
+    income.net_after_pm = round(pm_base_amount - pm_amount, 2)
     income.date = entry_date
     income.apartment_id = apartment_id
     income.platform_id = platform_id
@@ -583,10 +629,13 @@ async def bulk_edit_expenses(request: Request, ids: str = Form(...), notes: str 
             resolved_vat_percent = float(vat_percent) if vat_percent is not None else float(o.vat_percent or 0.0)
             if vat_percent is not None:
                 o.vat_percent = resolved_vat_percent
-            if gross_amount is not None or net_amount is not None:
+            if gross_amount is not None or net_amount is not None or vat_percent is not None:
+                source_gross_amount = gross_amount
+                if source_gross_amount is None and net_amount is None and vat_percent is not None:
+                    source_gross_amount = float(o.gross_amount or 0.0)
                 try:
                     resolved_gross_amount, resolved_net_amount = _resolve_expense_amounts(
-                        gross_amount,
+                        source_gross_amount,
                         resolved_vat_percent,
                         net_amount,
                     )
@@ -664,7 +713,10 @@ async def incomes_index(request: Request):
                     incomes.insert(0, focused_income)
         apartments = db.query(Apartment).all()
         platforms = db.query(Platform).all()
+        direct_booking_platform = _get_direct_booking_platform(db)
         pms = db.query(PropertyManager).all()
+        default_vat_percent = _get_default_income_vat_percent()
+        default_stamp_duty_amount = _get_default_stamp_duty_amount()
         attachments = (
             db.query(Attachment)
             .filter(Attachment.expense_id == None, Attachment.income_id == None)
@@ -697,11 +749,16 @@ async def incomes_index(request: Request):
                 else:
                     inc.associated_pm_name = None
                 inc.pm_percent = float(inc.pm_percent or 0.0)
-                inc.pm_amount = float(inc.pm_amount or 0.0)
+                inc.pm_amount = get_income_pm_amount(inc)
             except Exception:
                 inc.associated_pm_name = None
                 inc.pm_percent = float(getattr(inc, 'pm_percent', 0.0) or 0.0)
-                inc.pm_amount = float(getattr(inc, 'pm_amount', 0.0) or 0.0)
+                inc.pm_amount = get_income_pm_amount(inc)
+            inc.has_stamp_duty = bool(getattr(inc, 'has_stamp_duty', False))
+            inc.stamp_duty_amount = get_income_stamp_duty_amount(inc)
+            inc.pm_base_amount = get_income_pm_base_amount(inc)
+            inc.net_after_pm = float(getattr(inc, 'net_after_pm', None) or get_income_effective_amount(inc))
+            inc.vat_amount = round(float(getattr(inc, 'gross_amount', 0.0) or 0.0) - float(getattr(inc, 'net_amount', 0.0) or 0.0), 2)
             inc.cleaning_emoji = "🧹" if inc.apartment_id else ""
         # build a mapping for apartment to PM metadata used by the client-side defaults
         apt_pm_map = {}
@@ -718,30 +775,39 @@ async def incomes_index(request: Request):
             next=next_url,
         )
         income_create_url = _build_route_url("/money/incomes", mode='create', next=next_url)
-        return templates.TemplateResponse(request, "incomes_index.html", {"incomes": incomes, "apartments": apartments, "platforms": platforms, "pms": pms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date, "focus_income_id": focus_income_id, "create_mode": create_mode, "income_upload_return": income_upload_return, "income_create_url": income_create_url})
+        return templates.TemplateResponse(request, "incomes_index.html", {"incomes": incomes, "apartments": apartments, "platforms": platforms, "pms": pms, "attachments": attachments, "attachments_by_income": attachments_by_income, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "default_vat_percent": default_vat_percent, "default_stamp_duty_amount": default_stamp_duty_amount, "direct_booking_platform_id": (direct_booking_platform.id if direct_booking_platform else None), "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date, "focus_income_id": focus_income_id, "create_mode": create_mode, "income_upload_return": income_upload_return, "income_create_url": income_create_url})
     finally:
         db.close()
 
 
 @router.post("/incomes/add")
-async def add_income(request: Request, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
+async def add_income(request: Request, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), has_stamp_duty: str = Form(None), stamp_duty_amount: float = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
         uploaded_files = await _collect_uploaded_attachment_payloads(files)
         resolved_pm_id, resolved_pm_percent = _resolve_income_pm(db, apartment_id, associated_pm_id, associate_pm, pm_percent)
+        default_stamp_duty_amount = _get_default_stamp_duty_amount()
+        try:
+            resolved_gross_amount, resolved_net_amount = _resolve_income_amounts(gross_amount, vat_percent, net_amount)
+            resolved_has_stamp_duty, resolved_stamp_duty_amount = _resolve_income_stamp_duty(has_stamp_duty, stamp_duty_amount, default_stamp_duty_amount)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         recurrence_record = _create_recurrence(db, recurrence, recurrence_start, recurrence_end, date, notes=notes)
         e = Income(recurrence_id=(recurrence_record.id if recurrence_record else None))
         _populate_income_fields(
             e,
-            gross_amount,
+            resolved_gross_amount,
             vat_percent,
             resolved_pm_percent,
+            resolved_net_amount,
             date,
             apartment_id,
             platform_id,
             (resolved_pm_id if associate_pm else None),
             notes,
+            resolved_has_stamp_duty,
+            resolved_stamp_duty_amount,
         )
         db.add(e)
         db.commit()
@@ -769,10 +835,18 @@ async def edit_income_get(request: Request, income_id: int):
         e = db.query(Income).options(joinedload(Income.recurrence), joinedload(Income.orig_recurrence)).filter(Income.id == income_id).first()
         if not e:
             return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)
+        e.has_stamp_duty = bool(getattr(e, 'has_stamp_duty', False))
+        e.stamp_duty_amount = get_income_stamp_duty_amount(e)
+        e.pm_base_amount = get_income_pm_base_amount(e)
+        e.pm_amount = get_income_pm_amount(e)
+        e.net_after_pm = float(getattr(e, 'net_after_pm', None) or get_income_effective_amount(e))
+        e.vat_amount = round(float(getattr(e, 'gross_amount', 0.0) or 0.0) - float(getattr(e, 'net_amount', 0.0) or 0.0), 2)
         display_recurrence = e.recurrence or e.orig_recurrence
         apartments = db.query(Apartment).all()
         platforms = db.query(Platform).all()
+        direct_booking_platform = _get_direct_booking_platform(db)
         pms = db.query(PropertyManager).all()
+        default_stamp_duty_amount = _get_default_stamp_duty_amount()
         attached = db.query(Attachment).filter(Attachment.income_id == e.id).all()
         next_url = request.query_params.get('next') or None
         # collect all siblings in the same series
@@ -780,12 +854,12 @@ async def edit_income_get(request: Request, income_id: int):
         series_recurrence_id = e.recurrence_id or e.orig_recurrence_id
         if series_recurrence_id:
             series_items = db.query(Income).filter(Income.recurrence_id == series_recurrence_id).order_by(Income.date).all()
-        return templates.TemplateResponse(request, 'income_edit.html', {"income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached, "next": next_url, "series_items": series_items, "display_recurrence": display_recurrence})
+        return templates.TemplateResponse(request, 'income_edit.html', {"income": e, "apartments": apartments, "platforms": platforms, "pms": pms, "attached": attached, "next": next_url, "series_items": series_items, "display_recurrence": display_recurrence, "default_stamp_duty_amount": default_stamp_duty_amount, "direct_booking_platform_id": (direct_booking_platform.id if direct_booking_platform else None)})
     finally:
         db.close()
 
 @router.api_route('/incomes/{income_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(...), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associate_pm: str = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
+async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associate_pm: str = Form(None), has_stamp_duty: str = Form(None), stamp_duty_amount: float = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -800,6 +874,12 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
         created_recurrence = None
         resolved_pm_id, resolved_pm_percent = _resolve_income_pm(db, apartment_id, associated_pm_id, associate_pm, pm_percent)
         next_url = form.get('next') if form else None
+        default_stamp_duty_amount = _get_default_stamp_duty_amount()
+        try:
+            resolved_gross_amount, resolved_net_amount = _resolve_income_amounts(gross_amount, vat_percent, net_amount)
+            resolved_has_stamp_duty, resolved_stamp_duty_amount = _resolve_income_stamp_duty(has_stamp_duty, stamp_duty_amount, default_stamp_duty_amount)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         if rejoin_recurrence and not e.recurrence_id and orig_recur:
             try:
                 target_recurrence = db.query(Recurrence).filter(Recurrence.id == int(orig_recur)).first()
@@ -841,14 +921,17 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
                 db.commit()
                 _populate_income_fields(
                     e,
-                    gross_amount,
+                    resolved_gross_amount,
                     vat_percent,
                     resolved_pm_percent,
+                    resolved_net_amount,
                     r.start_date,
                     apartment_id,
                     platform_id,
                     (resolved_pm_id if associate_pm else None),
                     notes,
+                    resolved_has_stamp_duty,
+                    resolved_stamp_duty_amount,
                 )
                 e.orig_recurrence_id = None
                 db.add(e)
@@ -862,14 +945,17 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
                 e.orig_recurrence_id = None
             _populate_income_fields(
                 e,
-                gross_amount,
+                resolved_gross_amount,
                 vat_percent,
                 resolved_pm_percent,
+                resolved_net_amount,
                 date,
                 apartment_id,
                 platform_id,
                 (resolved_pm_id if associate_pm else None),
                 notes,
+                resolved_has_stamp_duty,
+                resolved_stamp_duty_amount,
             )
             db.add(e)
             db.commit()
@@ -920,16 +1006,23 @@ async def bulk_edit_incomes(request: Request, ids: str = Form(...), notes: str =
         for o in occs:
             if notes is not None and notes != '':
                 o.notes = notes
-            if gross_amount is not None:
-                o.gross_amount = float(gross_amount)
+            resolved_vat_percent = float(vat_percent) if vat_percent is not None else float(o.vat_percent or 0.0)
             if vat_percent is not None:
-                o.vat_percent = float(vat_percent)
-            if net_amount is not None:
-                o.net_amount = float(net_amount)
-            else:
-                # recompute net if gross/vat provided or leave as is
-                if gross_amount is not None and vat_percent is not None:
-                    o.net_amount = round(float(gross_amount) * (1 - (float(vat_percent) / 100.0)), 2)
+                o.vat_percent = resolved_vat_percent
+            if gross_amount is not None or net_amount is not None or vat_percent is not None:
+                source_gross_amount = gross_amount
+                if source_gross_amount is None and net_amount is None and vat_percent is not None:
+                    source_gross_amount = float(o.gross_amount or 0.0)
+                try:
+                    resolved_gross_amount, resolved_net_amount = _resolve_income_amounts(
+                        source_gross_amount,
+                        resolved_vat_percent,
+                        net_amount,
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+                o.gross_amount = resolved_gross_amount
+                o.net_amount = resolved_net_amount
             if pm_percent is not None:
                 o.pm_percent = float(pm_percent)
             if apartment_id:
@@ -941,8 +1034,8 @@ async def bulk_edit_incomes(request: Request, ids: str = Form(...), notes: str =
             if date:
                 o.date = date
             # recompute pm_amount and net_after_pm
-            o.pm_amount = round(float(o.gross_amount) * (float(o.pm_percent or 0.0) / 100.0), 2)
-            o.net_after_pm = round((float(o.net_amount or 0.0)) - o.pm_amount, 2)
+            o.pm_amount = get_income_pm_amount(o)
+            o.net_after_pm = get_income_effective_amount(o)
             db.add(o)
         db.commit()
         return RedirectResponse(url='/money/incomes', status_code=HTTP_303_SEE_OTHER)

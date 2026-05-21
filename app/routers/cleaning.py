@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Form, Depends
+from fastapi import APIRouter, HTTPException, Request, Form, Depends
 from typing import List
 from fastapi.responses import RedirectResponse
 from starlette.status import HTTP_303_SEE_OTHER
@@ -13,6 +13,21 @@ from app.main import templates
 
 def _redirect_to_next(next_url, fallback):
     return RedirectResponse(url=(next_url or fallback), status_code=HTTP_303_SEE_OTHER)
+
+
+def _resolve_cleaning_amounts(gross_amount, net_amount, vat_percent, use_net, fallback_gross=None, fallback_net=None):
+    vat_factor = 1 + (float(vat_percent or 0.0) / 100.0)
+    if vat_factor <= 0:
+        raise ValueError("vat_percent must be greater than -100")
+
+    if use_net:
+        resolved_net_amount = float(net_amount if net_amount is not None else (fallback_net or 0.0))
+        resolved_gross_amount = round(resolved_net_amount * vat_factor, 2)
+    else:
+        resolved_gross_amount = float(gross_amount if gross_amount is not None else (fallback_gross or 0.0))
+        resolved_net_amount = round(resolved_gross_amount / vat_factor, 2)
+
+    return round(resolved_gross_amount, 2), round(resolved_net_amount, 2)
 
 
 @router.get("")
@@ -83,12 +98,10 @@ async def add_cleaning(request: Request,
                     else:
                         gross_amount = base
         # compute missing amount
-        if use_net:
-            net_amount = float(net_amount or 0.0)
-            gross_amount = round(net_amount * (1 + vat_percent / 100.0), 2)
-        else:
-            gross_amount = float(gross_amount or 0.0)
-            net_amount = round(gross_amount * (1 - vat_percent / 100.0), 2)
+        try:
+            gross_amount, net_amount = _resolve_cleaning_amounts(gross_amount, net_amount, vat_percent, use_net)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         # create cleaning record
         c = Cleaning(date=date, apartment_id=apartment_id, income_id=income_id, company_id=company_id,
                      service_id=service_id, gross_amount=gross_amount,
@@ -170,12 +183,17 @@ async def edit_cleaning_post(request: Request,
                         net_amount = base
                     else:
                         gross_amount = base
-        if use_net:
-            net_amount = float(net_amount or c.net_amount or 0.0)
-            gross_amount = round(net_amount * (1 + vat_percent / 100.0), 2)
-        else:
-            gross_amount = float(gross_amount or c.gross_amount or 0.0)
-            net_amount = round(gross_amount * (1 - vat_percent / 100.0), 2)
+        try:
+            gross_amount, net_amount = _resolve_cleaning_amounts(
+                gross_amount,
+                net_amount,
+                vat_percent,
+                use_net,
+                fallback_gross=c.gross_amount,
+                fallback_net=c.net_amount,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         # update cleaning
         c.date = date
         c.apartment_id = apartment_id

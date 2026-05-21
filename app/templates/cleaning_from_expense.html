@@ -42,8 +42,12 @@
         <input type="number" name="gross_amount" step="0.01" class="form-control" id="cleaning_gross" value="{{ prefill.gross_amount }}">
       </div>
       <div class="mb-3">
-        <label>Importo netto</label>
+        <label title="L'imponibile e l'importo al netto dell'IVA, base su cui si calcola l'IVA.">Imponibile</label>
         <input type="number" name="net_amount" step="0.01" class="form-control" id="cleaning_net" value="">
+      </div>
+      <div class="mb-3">
+        <label>IVA calcolata</label>
+        <input type="number" step="0.01" class="form-control" id="cleaning_vat_amount" value="" readonly tabindex="-1">
       </div>
       <div class="mb-3">
         <label>IVA (%)</label>
@@ -51,7 +55,7 @@
       </div>
       <div class="mb-3 form-check">
         <input type="checkbox" class="form-check-input" id="cleaning_is_net" name="is_net" value="1">
-        <label class="form-check-label" for="cleaning_is_net">Importo netto</label>
+        <label class="form-check-label" for="cleaning_is_net">Importo inserito come imponibile</label>
       </div>
       <div class="mb-3">
         <label>Note</label>
@@ -70,6 +74,7 @@
   const svcSel = document.getElementById('cleaning_service_select');
   const grossInput = document.getElementById('cleaning_gross');
   const netInput = document.getElementById('cleaning_net');
+  const vatAmountInput = document.getElementById('cleaning_vat_amount');
   const vatInput = document.getElementById('cleaning_vat');
   const isNetChk = document.getElementById('cleaning_is_net');
   const compSel = document.getElementById('cleaning_company_select');
@@ -92,6 +97,7 @@
       // Clear amounts when company changes
       if(grossInput) grossInput.value = '';
       if(netInput) netInput.value = '';
+      if(vatAmountInput) vatAmountInput.value = '';
     });
   }
 
@@ -113,31 +119,60 @@
           if(grossInput) grossInput.value = amt;
           if(netInput) netInput.value = '';
         }
+        syncDerivedAmounts();
       }
     });
   }
 
-  // Auto-calculate net from gross and VAT
-  function calcNet(){
-    const gross = parseFloat(grossInput.value) || 0;
-    const vat = parseFloat(vatInput.value) || 0;
-    if(gross && vat >= 0 && !isNetChk.checked){
-      netInput.value = (gross * (1 - vat/100)).toFixed(2);
+  function parseAmount(input){
+    if (!input) {
+      return null;
     }
+    const rawValue = input.value.trim();
+    if (rawValue === '') {
+      return null;
+    }
+    const parsedValue = parseFloat(rawValue);
+    return Number.isFinite(parsedValue) ? parsedValue : null;
   }
 
-  function calcGross(){
-    const net = parseFloat(netInput.value) || 0;
-    const vat = parseFloat(vatInput.value) || 0;
-    if(net && vat >= 0 && isNetChk.checked){
-      grossInput.value = (net * (1 + vat/100)).toFixed(2);
-    }
+  function formatAmount(value){
+    return Number.isFinite(value) ? value.toFixed(2) : '';
   }
 
-  if(grossInput) grossInput.addEventListener('input', calcNet);
-  if(netInput) netInput.addEventListener('input', calcGross);
-  if(vatInput) vatInput.addEventListener('input', ()=>{ if(isNetChk.checked) calcGross(); else calcNet(); });
-  if(isNetChk) isNetChk.addEventListener('change', ()=>{ if(isNetChk.checked) calcGross(); else calcNet(); });
+  function syncDerivedAmounts(){
+    const vat = parseAmount(vatInput) ?? 0.0;
+    const vatFactor = 1 + (vat / 100.0);
+    if (isNetChk && isNetChk.checked) {
+      const net = parseAmount(netInput);
+      if (net === null || vatFactor <= 0) {
+        if (grossInput) grossInput.value = '';
+        if (vatAmountInput) vatAmountInput.value = '';
+        return;
+      }
+      const gross = net * vatFactor;
+      if (grossInput) grossInput.value = formatAmount(gross);
+      if (vatAmountInput) vatAmountInput.value = formatAmount(gross - net);
+      return;
+    }
+
+    const gross = parseAmount(grossInput);
+    if (gross === null || vatFactor <= 0) {
+      if (netInput) netInput.value = '';
+      if (vatAmountInput) vatAmountInput.value = '';
+      return;
+    }
+    const net = gross / vatFactor;
+    if (netInput) netInput.value = formatAmount(net);
+    if (vatAmountInput) vatAmountInput.value = formatAmount(gross - net);
+  }
+
+  if(grossInput) grossInput.addEventListener('input', syncDerivedAmounts);
+  if(netInput) netInput.addEventListener('input', syncDerivedAmounts);
+  if(vatInput) vatInput.addEventListener('input', syncDerivedAmounts);
+  if(isNetChk) isNetChk.addEventListener('change', syncDerivedAmounts);
+
+  syncDerivedAmounts();
 })();
 </script>
 {% endblock %}

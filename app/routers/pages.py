@@ -12,7 +12,7 @@ from app.auth_utils import get_current_user
 from fastapi.responses import JSONResponse
 from app.models import Income, Expense
 from starlette.status import HTTP_303_SEE_OTHER
-from app.utils import expand_open_recurrences_to_current_year, get_pm_payment_cash_amount, get_pm_payment_settlement_amount
+from app.utils import expand_open_recurrences_to_current_year, get_income_effective_amount as calculate_income_effective_amount, get_income_pm_amount as calculate_income_pm_amount, get_income_pm_base_amount, get_pm_payment_cash_amount, get_pm_payment_settlement_amount
 
 router = APIRouter()
 from app.main import templates
@@ -66,17 +66,12 @@ def _get_income_pm_id(entry) -> int | None:
 
 
 def _get_income_pm_amount(entry, pms_by_id=None) -> float:
-    pm_amount = float(getattr(entry, 'pm_amount', 0.0) or 0.0)
-    if pm_amount:
-        return pm_amount
     pm_id = _get_income_pm_id(entry)
-    if not pm_id or not pms_by_id:
-        return 0.0
-    pm = pms_by_id.get(pm_id)
-    if not pm:
-        return 0.0
-    pm_percent = float(getattr(pm, 'percent', 0.0) or 0.0)
-    return float(getattr(entry, 'gross_amount', 0.0) or 0.0) * (pm_percent / 100.0)
+    if pm_id and pms_by_id:
+        pm = pms_by_id.get(pm_id)
+        if pm:
+            return calculate_income_pm_amount(entry, pm_percent=float(getattr(pm, 'percent', 0.0) or 0.0))
+    return calculate_income_pm_amount(entry)
 
 
 @router.get('/stats')
@@ -188,8 +183,8 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
             # Use net_after_pm when available, otherwise compute from net - pm
             amt = float(getattr(inc, 'net_after_pm', None) or 0.0)
             if not amt:
-                amt = float(getattr(inc, 'net_amount', 0.0) or 0.0) - pm_amount
-            income_before_pm = float(getattr(inc, 'net_amount', 0.0) or 0.0)
+                amt = calculate_income_effective_amount(inc)
+            income_before_pm = get_income_pm_base_amount(inc)
             if not income_before_pm and amt:
                 income_before_pm = amt + pm_amount
             months[d.month]['income'] += amt

@@ -1,0 +1,4 @@
+DIRECT_BOOKING_PLATFORM_NAME = "Prenotazione diretta"
+DIRECT_BOOKING_PLATFORM_NOTE = "system:direct_booking"
+DEFAULT_IVA = 22.0
+DEFAULT_STAMP_DUTY = 2.0
