@@ -35,6 +35,7 @@
                 <span>
                 {% if request.session.get('role') == 'admin' %}
                 <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/property-manager/{{ pm.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
+                <a class="btn btn-sm btn-outline-info" href="/attachments/by-entity/pm/{{ pm.id }}">Documenti</a>
                 {% endif %}
               </span>
             </li>
@@ -127,6 +128,7 @@
               <span>
                 {% if request.session.get('role') == 'admin' %}
                 <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/company/{{ c.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
+                <a class="btn btn-sm btn-outline-info" href="/attachments/by-entity/company/{{ c.id }}">Documenti</a>
                 {% endif %}
               </span>
             </li>
@@ -154,6 +156,7 @@
               <span>
                 {% if request.session.get('role') == 'admin' %}
                 <a class="btn btn-sm btn-outline-secondary" href="/anagrafiche/platform/{{ p.id }}/edit?next={{ return_url|urlencode }}">Modifica</a>
+                <a class="btn btn-sm btn-outline-info" href="/attachments/by-entity/platform/{{ p.id }}">Documenti</a>
                 {% endif %}
               </span>
             </li>

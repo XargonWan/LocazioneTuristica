@@ -450,7 +450,6 @@ async def rename_attachment(
             return RedirectResponse(url='/attachments', status_code=HTTP_303_SEE_OTHER)
         new_filename = form.get('filename', '').strip()
         if new_filename:
-            # Rename on disk
             old_path = attachment.disk_path
             if old_path and os.path.exists(old_path):
                 dir_name = os.path.dirname(old_path)
@@ -463,6 +462,16 @@ async def rename_attachment(
             attachment.filename = new_filename
         attachment.notes = form.get('notes', '') or None
         attachment.document_type = form.get('document_type', '') or None
+        apartment_id = form.get('apartment_id')
+        pm_id = form.get('property_manager_id')
+        if apartment_id is not None and apartment_id != '':
+            attachment.apartment_id = int(apartment_id)
+        else:
+            attachment.apartment_id = None
+        if pm_id is not None and pm_id != '':
+            attachment.property_manager_id = int(pm_id)
+        else:
+            attachment.property_manager_id = None
         db.add(attachment)
         db.commit()
         next_url = form.get('next') or _attachment_default_next(attachment)
@@ -577,6 +586,19 @@ async def attachments_by_entity(request: Request, entity_type: str, entity_id: i
             "entity_id": entity_id,
             "next": next_url,
         })
+    finally:
+        db.close()
+
+
+@router.get('/api/lists')
+async def api_lists(request: Request):
+    if not get_current_user(request):
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+    db = SessionLocal()
+    try:
+        apartments = [{"id": a.id, "name": a.name} for a in db.query(Apartment).all()]
+        pms = [{"id": pm.id, "name": f"{pm.first_name} {pm.last_name}"} for pm in db.query(PropertyManager).all()]
+        return JSONResponse(content={"apartments": apartments, "pms": pms})
     finally:
         db.close()
 

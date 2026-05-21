@@ -18,6 +18,8 @@
       data-attachment-doc-type="{{ attachment.document_type or '' }}"
       data-attachment-notes="{{ attachment.notes or '' }}"
       data-attachment-next="{{ next_url }}"
+      data-attachment-apartment-id="{{ attachment.apartment_id or '' }}"
+      data-attachment-pm-id="{{ attachment.property_manager_id or '' }}"
       title="Modifica" aria-label="Modifica">✏️</button>
     <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
       <input type="hidden" name="next" value="{{ next_url }}">

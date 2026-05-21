@@ -115,6 +115,18 @@
                 </select>
               </div>
               <div class="mb-3">
+                <label>Appartamento</label>
+                <select name="apartment_id" class="form-select" id="renameAttachmentApartment">
+                  <option value="">---</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label>Property Manager</label>
+                <select name="property_manager_id" class="form-select" id="renameAttachmentPm">
+                  <option value="">---</option>
+                </select>
+              </div>
+              <div class="mb-3">
                 <label>Note</label>
                 <textarea name="notes" class="form-control" rows="2" id="renameAttachmentNotes"></textarea>
               </div>
@@ -358,6 +370,8 @@
         const form = document.getElementById('renameAttachmentForm');
         const filenameInput = document.getElementById('renameAttachmentFilename');
         const docTypeInput = document.getElementById('renameAttachmentDocType');
+        const aptInput = document.getElementById('renameAttachmentApartment');
+        const pmInput = document.getElementById('renameAttachmentPm');
         const notesInput = document.getElementById('renameAttachmentNotes');
         const nextInput = document.getElementById('renameAttachmentNext');
         const modalEl = document.getElementById('renameAttachmentModal');
@@ -367,11 +381,40 @@
         const docType = btn.getAttribute('data-attachment-doc-type');
         const notes = btn.getAttribute('data-attachment-notes');
         const nextUrl = btn.getAttribute('data-attachment-next');
+        const aptId = btn.getAttribute('data-attachment-apartment-id') || '';
+        const pmId = btn.getAttribute('data-attachment-pm-id') || '';
         form.action = '/attachments/' + id + '/rename';
         filenameInput.value = filename || '';
         docTypeInput.value = docType || '';
         notesInput.value = notes || '';
         nextInput.value = nextUrl || '';
+        // Populate apartment and PM selects from API if needed
+        function populateSelect(sel, items, selectedId){
+          const currentVal = sel.value;
+          sel.innerHTML = '<option value="">---</option>';
+          items.forEach(function(item){
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = item.name;
+            if (String(item.id) === String(selectedId)) opt.selected = true;
+            sel.appendChild(opt);
+          });
+        }
+        if (aptInput) {
+          if (!aptInput._populated) {
+            fetch('/attachments/api/lists').then(function(r){ return r.json(); }).then(function(data){
+              aptInput._populated = true;
+              if (pmInput) pmInput._populated = true;
+              populateSelect(aptInput, data.apartments || [], aptId);
+              if (pmInput) populateSelect(pmInput, data.pms || [], pmId);
+            }).catch(function(err){
+              console.debug('failed to load lists', err);
+            });
+          } else {
+            if (aptId) aptInput.value = aptId;
+            if (pmInput && pmId) pmInput.value = pmId;
+          }
+        }
         try {
           const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
           modal.show();
