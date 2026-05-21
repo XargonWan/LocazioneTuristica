@@ -413,7 +413,7 @@ async def login(request: Request):
 
 
 # Include routers
-from .routers import anagrafiche, auth, money, attachments, pages, cleaning  # noqa
+from .routers import anagrafiche, auth, money, attachments, pages, cleaning, tax  # noqa
 
 app.include_router(auth.router)
 app.include_router(anagrafiche.router)
@@ -421,4 +421,5 @@ app.include_router(money.router)
 app.include_router(attachments.router)
 app.include_router(cleaning.router)
 app.include_router(pages.router)
+app.include_router(tax.router)
 

@@ -60,6 +60,9 @@ def init_db():
             ensure_column('attachment', 'notes', 'TEXT')
             ensure_column('attachment', 'apartment_id', 'INTEGER REFERENCES apartment(id)')
             ensure_column('attachment', 'property_manager_id', 'INTEGER REFERENCES property_manager(id)')
+            ensure_column('attachment', 'is_deduction', 'INTEGER DEFAULT 0')
+            ensure_column('attachment', 'document_date', 'VARCHAR')
+            ensure_column('attachment', 'deduction_year', 'INTEGER')
             cur.execute("PRAGMA table_info(company)")
             cols = [row[1] for row in cur.fetchall()]
             if 'is_cleaning_company' not in cols:

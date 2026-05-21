@@ -214,6 +214,9 @@ class Attachment(Base):
     property_manager_id = Column(Integer, ForeignKey("property_manager.id"), nullable=True)
     document_type = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    is_deduction = Column(Boolean, default=False)
+    document_date = Column(String, nullable=True)
+    deduction_year = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     expense = relationship("Expense")

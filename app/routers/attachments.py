@@ -265,6 +265,17 @@ async def index(
         db.close()
 
 
+def _parse_document_date(value):
+    if not value:
+        return None
+    from datetime import datetime
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+        return value
+    except Exception:
+        return None
+
+
 @router.post("/upload")
 async def upload(
     request: Request,
@@ -276,6 +287,8 @@ async def upload(
     property_manager_id: int = Form(None),
     document_type: str = Form(None),
     notes: str = Form(''),
+    document_date: str = Form(None),
+    deduction_year: int = Form(None),
     user=Depends(admin_required),
 ):
     try:
@@ -294,6 +307,7 @@ async def upload(
             target_income_id = income_id
         target_apartment_id = apartment_id
         target_pm_id = property_manager_id
+        parsed_doc_date = _parse_document_date(document_date)
 
         for filename, content, content_type in uploaded_files:
             path = os.path.join(UPLOAD_DIR, filename)
@@ -310,6 +324,8 @@ async def upload(
                 property_manager_id=target_pm_id,
                 document_type=document_type or None,
                 notes=notes or None,
+                document_date=parsed_doc_date,
+                deduction_year=deduction_year,
             )
             db.add(attachment)
         db.commit()
@@ -323,6 +339,8 @@ async def upload_simple(
     request: Request,
     files: list[UploadFile] = File(..., alias="file"),
     next: str = Form(None),
+    document_date: str = Form(None),
+    deduction_year: int = Form(None),
     user=Depends(admin_required),
 ):
     """Simplified upload for use from other pages (expense/income edit)."""
@@ -334,7 +352,20 @@ async def upload_simple(
         return RedirectResponse(url=(next or "/attachments"), status_code=HTTP_303_SEE_OTHER)
     db = SessionLocal()
     try:
-        persist_uploaded_attachments(db, uploaded_files)
+        parsed_doc_date = _parse_document_date(document_date)
+        for filename, content, content_type in uploaded_files:
+            path = os.path.join(UPLOAD_DIR, filename)
+            with open(path, "wb") as file_handle:
+                file_handle.write(content)
+            attachment = Attachment(
+                filename=filename,
+                disk_path=path,
+                mimetype=content_type,
+                size=len(content),
+                document_date=parsed_doc_date,
+                deduction_year=deduction_year,
+            )
+            db.add(attachment)
         db.commit()
         return RedirectResponse(url=(next or "/attachments"), status_code=HTTP_303_SEE_OTHER)
     finally:
@@ -462,6 +493,15 @@ async def rename_attachment(
             attachment.filename = new_filename
         attachment.notes = form.get('notes', '') or None
         attachment.document_type = form.get('document_type', '') or None
+        attachment.is_deduction = form.get('is_deduction') == '1'
+        doc_date = _parse_document_date(form.get('document_date'))
+        if doc_date:
+            attachment.document_date = doc_date
+        ded_year = form.get('deduction_year')
+        if ded_year is not None and ded_year != '':
+            attachment.deduction_year = int(ded_year)
+        else:
+            attachment.deduction_year = None
         apartment_id = form.get('apartment_id')
         pm_id = form.get('property_manager_id')
         if apartment_id is not None and apartment_id != '':

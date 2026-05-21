@@ -1,11 +1,22 @@
 <div class="attachment-preview-panel">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
     <div class="min-width-0">
-      <h1 class="h4 mb-1 text-break">{{ attachment.filename }}</h1>
+      <h1 class="h4 mb-1 text-break">
+        {{ attachment.filename }}
+        {% if attachment.is_deduction %}
+        <span class="badge bg-warning text-dark ms-1"><i class="bi bi-check-circle"></i> Per detrazioni</span>
+        {% endif %}
+        {% if attachment.is_deduction and attachment.deduction_year %}
+        <span class="badge bg-primary text-white ms-1">730 {{ attachment.deduction_year }}</span>
+        {% endif %}
+      </h1>
       <div class="text-muted">
         {{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}
         {% if attachment.document_type %}
         <span class="badge bg-info text-dark ms-2">{{ attachment.document_type|capitalize }}</span>
+        {% endif %}
+        {% if attachment.document_date %}
+        <span class="ms-2"><i class="bi bi-calendar"></i> {{ attachment.document_date|format_date }}</span>
         {% endif %}
         {% if attachment.notes %}
         <span class="ms-2"><i class="bi bi-chat-text"></i> {{ attachment.notes }}</span>
@@ -50,6 +61,9 @@
         data-attachment-next="{{ next_url }}"
         data-attachment-apartment-id="{{ attachment.apartment_id or '' }}"
         data-attachment-pm-id="{{ attachment.property_manager_id or '' }}"
+        data-attachment-is-deduction="{{ attachment.is_deduction or False }}"
+        data-attachment-document-date="{{ attachment.document_date or '' }}"
+        data-attachment-deduction-year="{{ attachment.deduction_year or '' }}"
         title="Modifica" aria-label="Modifica">✏️</button>
       <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
         <input type="hidden" name="next" value="{{ next_url }}">

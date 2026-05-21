@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Export 730</h1>
+
+<div class="alert alert-info">
+  <i class="bi bi-info-circle"></i>
+  Esporta la documentazione annuale per il calcolo del 730.
+  I documenti flaggati come <strong>"Per detrazioni"</strong> verranno inclusi nell'esportazione.
+  Puoi flaggare i documenti dalla pagina <a href="/attachments">Documenti</a>.
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/tax/export/730/zip" class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Anno</label>
+        <select name="year" class="form-select">
+          {% for y in available_years %}
+          <option value="{{ y }}" {% if y == prev_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Seleziona l'anno per cui generare la documentazione 730.</div>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Opzioni</label>
+        <div class="border rounded p-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="hide_amounts" id="hide_amounts">
+            <label class="form-check-label" for="hide_amounts">Nascondi cifre</label>
+          </div>
+          <div class="mt-2 text-muted small">
+            Documenti per detrazioni: <strong>{{ deduction_count }}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-file-earmark-zip"></i> Esporta ZIP (report + documenti)
+        </button>
+        <button type="submit" formaction="/tax/export/730/pdf" class="btn btn-outline-primary">
+          <i class="bi bi-file-earmark-pdf"></i> Solo PDF
+        </button>
+        <a href="/overview" class="btn btn-outline-secondary">Annulla</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">
+    <h5 class="mb-0">Cosa contiene l'esportazione</h5>
+  </div>
+  <div class="card-body">
+    <ul class="mb-0">
+      <li><strong>Report economico annuale</strong> (PDF) - Riepilogo mensile entrate/uscite, totali annuali</li>
+      <li><strong>Documenti per detrazioni</strong> - Tutti i documenti che hai flaggato come "Per detrazioni" per l'anno selezionato, inclusi come file originali</li>
+    </ul>
+    <p class="mt-2 mb-0 text-muted small">
+      Il commercialista ricever&agrave; un archivio ZIP con il report PDF e tutti i documenti allegati,
+      organizzati per una facile consultazione.
+    </p>
+  </div>
+</div>
+{% endblock %}

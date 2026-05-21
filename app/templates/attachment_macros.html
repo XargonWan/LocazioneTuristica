@@ -1,7 +1,12 @@
 {% macro action_row(attachment, next_url, is_admin=False, show_meta=False) -%}
 <div class="attachment-action-row">
   <div class="attachment-action-main">
-    <div class="attachment-action-name fw-semibold" title="{{ attachment.filename }}">{{ attachment.filename }}</div>
+    <div class="attachment-action-name fw-semibold" title="{{ attachment.filename }}">
+      {{ attachment.filename }}
+      {% if attachment.is_deduction %}
+      <span class="badge bg-warning text-dark ms-1">Detrazioni</span>
+      {% endif %}
+    </div>
     {% if show_meta %}
     <div class="attachment-action-meta text-muted small" title="{{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}">
       {{ attachment.mimetype or 'tipo sconosciuto' }}{% if attachment.size is not none %} - {{ attachment.size }} bytes{% endif %}
@@ -20,6 +25,9 @@
       data-attachment-next="{{ next_url }}"
       data-attachment-apartment-id="{{ attachment.apartment_id or '' }}"
       data-attachment-pm-id="{{ attachment.property_manager_id or '' }}"
+      data-attachment-is-deduction="{{ attachment.is_deduction or False }}"
+      data-attachment-document-date="{{ attachment.document_date or '' }}"
+      data-attachment-deduction-year="{{ attachment.deduction_year or '' }}"
       title="Modifica" aria-label="Modifica">✏️</button>
     <form method="post" action="/attachments/{{ attachment.id }}/delete" class="d-inline">
       <input type="hidden" name="next" value="{{ next_url }}">

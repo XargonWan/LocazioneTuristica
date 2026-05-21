@@ -19,18 +19,34 @@
     <ul class="list-group mt-3">
       {% for a in attachments %}
       <li class="list-group-item">
-        {{ attachment_ui.action_row(a, return_url, request.session.get('role') == 'admin', True) }}
-        <div class="small text-muted mt-2">
-          {% if a.document_type %}
-          <span class="badge bg-info text-dark me-1">{{ a.document_type|capitalize }}</span>
-          {% endif %}
-          {% if a.notes %}
-          <span class="me-2">{{ a.notes }}</span>
-          {% endif %}
-          {% if a.expense %}
-            Spesa del {{ a.expense.date|format_date }}: {{ a.expense.notes or ('#' ~ a.expense.id) }}{% if a.expense.apartment %} / {{ a.expense.apartment.name }}{% endif %}
-          {% elif a.income %}
-            Entrata del {{ a.income.date|format_date }}: {{ a.income.notes or ('#' ~ a.income.id) }}{% if a.income.apartment %} / {{ a.income.apartment.name }}{% endif %}
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="flex-grow-1 min-width-0">
+            {{ attachment_ui.action_row(a, return_url, request.session.get('role') == 'admin', True) }}
+            <div class="small text-muted mt-1">
+              {% if a.document_type %}
+              <span class="badge bg-info text-dark me-1">{{ a.document_type|capitalize }}</span>
+              {% endif %}
+              {% if a.is_deduction %}
+              <span class="badge bg-warning text-dark me-1"><i class="bi bi-check-circle"></i> Per detrazioni</span>
+              {% endif %}
+              {% if a.is_deduction and a.deduction_year %}
+              <span class="badge bg-primary text-white me-1">730 {{ a.deduction_year }}</span>
+              {% endif %}
+              {% if a.document_date %}
+              <span class="me-2"><i class="bi bi-calendar"></i> {{ a.document_date|format_date }}</span>
+              {% endif %}
+              {% if a.notes %}
+              <span class="me-2">{{ a.notes }}</span>
+              {% endif %}
+            </div>
+            <div class="small text-muted mt-1">
+              {% if a.expense %}
+                Spesa del {{ a.expense.date|format_date }}: {{ a.expense.notes or ('#' ~ a.expense.id) }}{% if a.expense.apartment %} / {{ a.expense.apartment.name }}{% endif %}
+              {% elif a.income %}
+                Entrata del {{ a.income.date|format_date }}: {{ a.income.notes or ('#' ~ a.income.id) }}{% if a.income.apartment %} / {{ a.income.apartment.name }}{% endif %}
+              {% endif %}
+            </div>
+          </div>
           {% endif %}
         </div>
       </li>
