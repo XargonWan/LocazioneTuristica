@@ -28,8 +28,6 @@ jobs:
           fetch-depth: 0
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v4
-        with:
-          versionSpec: '5.x'
       - name: Determine version with GitVersion
         id: gitversion
         run: |
