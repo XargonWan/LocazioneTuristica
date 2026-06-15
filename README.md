@@ -1,7 +1,7 @@
 # LocazioneTuristica
 
 > [!WARNING]
-> L'applicazione è stata sviluppata usando la tecnica del vibe codinga, tuttavia, io lo sviluppatore, la uso come daily driver e al momento non ho trovato bug critici ne data loss.
+> L'applicazione è stata sviluppata usando la tecnica del vibe coding, tuttavia, io lo sviluppatore, la uso come daily driver e al momento non ho trovato bug critici ne data loss.
 
 LocazioneTuristica è una semplice ma completa applicazione web per gestire le entrate e le spese di locazioni turistiche (affitti brevi). È pensata per piccole realtà e per chi vuole tenere traccia dei flussi economici, delle spese, delle ripetizioni periodiche (recurrence) e degli allegati relativi a ogni voce.
 
