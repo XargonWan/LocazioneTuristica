@@ -3,7 +3,7 @@ services:
   locazioneturistica:
     # build: .
     image: xargon/locazioneturistica:latest
-    container_name: LocazioneTursitica
+    container_name: locazionetursitica
     ports:
       - "8002:8000"
     volumes:
