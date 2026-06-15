@@ -29,6 +29,7 @@ jobs:
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v4
       - name: Determine version with GitVersion
+        continue-on-error: true
         id: gitversion
         run: |
           output=$(dotnet-gitversion /config GitVersion.yml /output json 2>&1)
@@ -39,6 +40,7 @@ jobs:
             echo "semVer=${semver}" >> "$GITHUB_OUTPUT"
           else
             echo "::error::dotnet-gitversion did not produce valid JSON"
+            echo "semVer=0.0.0" >> "$GITHUB_OUTPUT"
           fi
 
   build-images:
