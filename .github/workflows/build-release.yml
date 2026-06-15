@@ -23,11 +23,11 @@ jobs:
     outputs:
       semver: ${{ steps.gitversion.outputs.semVer }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout
         with:
           fetch-depth: 0
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v0.9.14
+        uses: gittools/actions/gitversion/setup
         with:
           versionSpec: '5.x'
       - name: Determine version with GitVersion
@@ -64,19 +64,19 @@ jobs:
     env:
       IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/locazioneturistica
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout
         with:
           fetch-depth: 0
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action
       - name: Build and push by digest (${{ matrix.arch }})
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -91,7 +91,7 @@ jobs:
         run: |
           echo "${{ steps.build.outputs.digest }}" > digest-${{ matrix.arch }}
           echo "Digest for ${{ matrix.arch }}: ${{ steps.build.outputs.digest }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact
         with:
           name: digest-${{ matrix.arch }}
           path: digest-${{ matrix.arch }}
@@ -101,12 +101,12 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout
       - name: Create dummy env file
         run: |
           echo "BOTFATHER_TOKEN=dummy" >> .env
           echo "OPENAI_API_KEY=dummy" >> .env
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python
         with:
           python-version: '3.x'
       - name: Install uv
@@ -117,7 +117,7 @@ jobs:
         id: tests
         run: ./run_tests.sh
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact
         with:
           name: unit-test-results
           path: test-results/
@@ -127,8 +127,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout
+      - uses: actions/setup-python
         with:
           python-version: '3.x'
       - name: Install mypy
@@ -146,17 +146,17 @@ jobs:
       IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/locazioneturistica
     steps:
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - uses: actions/download-artifact@v4
+        uses: docker/setup-buildx-action
+      - uses: actions/download-artifact
         with:
           name: digest-amd64
           path: .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact
         with:
           name: digest-arm64
           path: .
