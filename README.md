@@ -1,7 +1,7 @@
 # LocazioneTuristica
 
 > [!WARNING]
-> L'applicazione è nel pieno del suo sviluppo, al momento è da considerarsi non affidabile  
+> L'applicazione è stata sviluppata usando la tecnica del vibe codinga, tuttavia, io lo sviluppatore, la uso come daily driver e al momento non ho trovato bug critici ne data loss.
 
 LocazioneTuristica è una semplice ma completa applicazione web per gestire le entrate e le spese di locazioni turistiche (affitti brevi). È pensata per piccole realtà e per chi vuole tenere traccia dei flussi economici, delle spese, delle ripetizioni periodiche (recurrence) e degli allegati relativi a ogni voce.
 
@@ -32,6 +32,11 @@ LocazioneTuristica è una semplice ma completa applicazione web per gestire le e
 - SQLite (DB locale di default)
 - pytest per i test
 
+## Installazione e avvio
+L'applicazione è stata sviluppata per essere deployata su un home server con docker compose, non è stata esplorata la possibilità di essere utilizzata standalone ma potrebbe funzionare comunque.
+Basterà aggiungere (o lanciare) il `docker-compose.yml` al (o dal) tuo stack.
+
+
 ## Installazione e avvio (sviluppo) 🛠️
 Clona il repository e crea un virtual environment:
 
@@ -50,6 +55,8 @@ UVICORN_RELOAD=1 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8
 ```
 
 Oppure con Docker Compose:
+
+Commenta `image` e decommenta `build` in `docker-compose.yml` per eseguire il codice direttamente presente sulla repo, poi:
 
 ```bash
 docker compose up -d --build
