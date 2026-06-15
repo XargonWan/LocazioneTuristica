@@ -137,6 +137,7 @@ class Income(Base):
     apartment_id = Column(Integer, ForeignKey("apartment.id"), nullable=True)
     platform_id = Column(Integer, ForeignKey("platform.id"), nullable=True)
     date = Column(String, nullable=True)
+    check_out = Column(String, nullable=True)
     gross_amount = Column(DECIMAL(10, 2), default=0.0)
     vat_percent = Column(DECIMAL(5, 2), default=22.0)
     net_amount = Column(DECIMAL(10, 2), default=0.0)
@@ -223,6 +224,35 @@ class Attachment(Base):
     income = relationship("Income")
     apartment = relationship("Apartment")
     property_manager = relationship("PropertyManager")
+
+
+class PlatformBooking(Base):
+    __tablename__ = "platform_booking"
+    id = Column(Integer, primary_key=True)
+    platform_booking_id = Column(String, nullable=True, index=True)
+    apartment_id = Column(Integer, ForeignKey("apartment.id"), nullable=True)
+    platform_id = Column(Integer, ForeignKey("platform.id"), nullable=True)
+    income_id = Column(Integer, ForeignKey("income.id"), nullable=True)
+    guest_name = Column(String, nullable=True)
+    check_in = Column(String, nullable=True)
+    check_out = Column(String, nullable=True)
+    status = Column(String, nullable=True, default="confirmed")
+    gross_amount = Column(DECIMAL(10, 2), default=0.0)
+    cleaning_fee = Column(DECIMAL(10, 2), default=0.0)
+    platform_fee = Column(DECIMAL(10, 2), default=0.0)
+    net_amount = Column(DECIMAL(10, 2), default=0.0)
+    currency = Column(String, default="EUR")
+    guests_count = Column(Integer, nullable=True)
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    import_source = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    apartment = relationship("Apartment")
+    platform = relationship("Platform")
+    income = relationship("Income")
 
 
 class Payment(Base):

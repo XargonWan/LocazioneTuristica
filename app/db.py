@@ -56,6 +56,7 @@ def init_db():
             ensure_column('income', 'orig_recurrence_id', 'INTEGER REFERENCES recurrence(id)')
             ensure_column('income', 'has_stamp_duty', 'INTEGER DEFAULT 0')
             ensure_column('income', 'stamp_duty_amount', 'DECIMAL(10, 2) DEFAULT 0.0')
+            ensure_column('income', 'check_out', 'VARCHAR')
             ensure_column('attachment', 'document_type', 'VARCHAR')
             ensure_column('attachment', 'notes', 'TEXT')
             ensure_column('attachment', 'apartment_id', 'INTEGER REFERENCES apartment(id)')
@@ -83,6 +84,12 @@ def init_db():
                         cur.execute("ALTER TABLE cleaning ADD COLUMN income_id INTEGER;")
                     except Exception:
                         pass
+            ensure_column('platform_booking', 'income_id', 'INTEGER REFERENCES income(id)')
+            ensure_column('platform_booking', 'guests_count', 'INTEGER')
+            ensure_column('platform_booking', 'phone', 'VARCHAR')
+            ensure_column('platform_booking', 'email', 'VARCHAR')
+            ensure_column('platform_booking', 'currency', 'VARCHAR')
+            ensure_column('platform_booking', 'import_source', 'VARCHAR')
             conn.commit()
         finally:
             conn.close()
@@ -123,6 +130,7 @@ def init_db():
 
         ensure_setting('default_iva', str(DEFAULT_IVA))
         ensure_setting('default_stamp_duty', str(DEFAULT_STAMP_DUTY))
+        ensure_setting('ical_sync_interval_minutes', '360')
         db.commit()
     finally:
         db.close()

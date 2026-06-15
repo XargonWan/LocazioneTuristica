@@ -8,7 +8,7 @@
 {% macro pm_due_markup(amount) -%}
   {%- set due_amount = amount|default(0)|float -%}
   {%- if due_amount != 0 -%}
-    <small class="ms-3 {{ 'text-success' if due_amount < 0 else 'text-danger' }}">PM ancora da versare: €{{ '%.2f'|format(due_amount) }}{% if due_amount < 0 %} <span class="text-success">(in credito)</span>{% endif %}</small>
+    <small class="ms-3 {{ 'text-success' if due_amount < 0 else 'text-danger' }}">PM ancora da versare: <span class="amount">€{{ '%.2f'|format(due_amount) }}</span>{% if due_amount < 0 %} <span class="text-success">(in credito)</span>{% endif %}</small>
   {%- endif -%}
 {%- endmacro %}
 <div class="d-flex justify-content-between align-items-center">
@@ -125,8 +125,8 @@
                               {% endif %}
                                 <strong>{{ ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][m.month] }} - Risultato del mese: <span class="net-total {{ net_class }}">€{{ '%.2f'|format(net) }}</span></strong>
                               <div>
-                                {% if m.income %}<small class="text-success">Incassi disponibili: €{{ '%.2f'|format(m.income) }}</small>{% endif %}
-                                {% if m.expense %}<small class="text-danger {% if m.income %}ms-3{% endif %}">Spese lorde: €{{ '%.2f'|format(m.expense) }}</small>{% endif %}
+                                {% if m.income %}<small class="text-success">Incassi disponibili: <span class="amount">€{{ '%.2f'|format(m.income) }}</span></small>{% endif %}
+                                {% if m.expense %}<small class="text-danger {% if m.income %}ms-3{% endif %}">Spese lorde: <span class="amount">€{{ '%.2f'|format(m.expense) }}</span></small>{% endif %}
                                 {{ pm_due_markup(m.pm_due) }}
                               </div>
                            </div>
@@ -148,6 +148,7 @@
                                       <th scope="col">Riferimento</th>
                                       <th scope="col">Data</th>
                                       <th scope="col" class="text-end">Importo</th>
+                                      <th scope="col" class="text-end">Netto</th>
                                       <th scope="col" class="text-end">&nbsp;</th>
                                     </tr>
                                   </thead>
@@ -161,16 +162,21 @@
                                            </td>
                                            <td>{% if item.type == 'income' %}{{ item.platform_name or item.associated_pm_name or '' }}{% else %}{{ item.company_name or item.associated_pm_name or '' }}{% endif %}</td>
                                            <td>{{ item.date|format_date }}</td>
-                                          <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
-                                          <td class="text-end">
-                                            {% if request.session.get('role') == 'admin' %}
-                                              {% if item.type == 'income' %}
-                                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#incomeModal-{{ item.id }}">Dettagli</button>
-                                              {% else %}
-                                                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#expenseModal-{{ item.id }}">Dettagli</button>
-                                              {% endif %}
-                                            {% endif %}
-                                          </td>
+                                           <td class="text-end amount">€{{ '%.2f'|format(item.gross_amount) }}</td>
+                                           <td class="text-end amount">
+                                             {% if item.type == 'income' %}
+                                               €{{ '%.2f'|format(item.net_after_pm) }}
+                                             {% endif %}
+                                           </td>
+                                           <td class="text-end">
+                                             {% if request.session.get('role') == 'admin' %}
+                                               {% if item.type == 'income' %}
+                                                 <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#incomeModal-{{ item.id }}">Dettagli</button>
+                                               {% else %}
+                                                 <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#expenseModal-{{ item.id }}">Dettagli</button>
+                                               {% endif %}
+                                             {% endif %}
+                                           </td>
                                         </tr>
                                     {% endfor %}
                                  </tbody>
@@ -206,11 +212,11 @@
             {% set grand_total_virtual_class = 'net-zero' %}
           {% endif %}
           <div class="d-flex flex-wrap gap-3 align-items-start">
-            <div><strong title="Entrate dell'anno dopo IVA e marca da bollo, prima dei versamenti al PM.">Entrate dopo IVA e bollo:</strong> <span>€{{ '%.2f'|format(annual_income_net_total) }}</span></div>
-            <div><strong title="Spese registrate nell'anno, esclusi i pagamenti fatti ai PM che sono mostrati a parte.">Spese:</strong> <span>€{{ '%.2f'|format(annual_expense_total) }}</span></div>
-            <div><strong title="Quanto hai effettivamente gia versato ai PM nell'anno tramite spese associate a un PM.">PM gia versato:</strong> <span>€{{ '%.2f'|format(annual_pm_paid_total) }}</span></div>
+            <div><strong title="Entrate dell'anno dopo IVA e marca da bollo, prima dei versamenti al PM.">Entrate dopo IVA e bollo:</strong> <span class="amount">€{{ '%.2f'|format(annual_income_net_total) }}</span></div>
+            <div><strong title="Spese registrate nell'anno, esclusi i pagamenti fatti ai PM che sono mostrati a parte.">Spese:</strong> <span class="amount">€{{ '%.2f'|format(annual_expense_total) }}</span></div>
+            <div><strong title="Quanto hai effettivamente gia versato ai PM nell'anno tramite spese associate a un PM.">PM gia versato:</strong> <span class="amount">€{{ '%.2f'|format(annual_pm_paid_total) }}</span></div>
             {% if annual_pm_due_total != 0 %}
-              <div><strong title="Quota PM maturata sulle entrate dell'anno ma non ancora versata; se negativa, indica un credito verso il PM.">PM ancora da versare:</strong> <span class="{{ 'text-success' if annual_pm_due_total < 0 else '' }}">€{{ '%.2f'|format(annual_pm_due_total) }}</span>{% if annual_pm_due_total < 0 %} <span class="text-success">(in credito)</span>{% endif %}</div>
+              <div><strong title="Quota PM maturata sulle entrate dell'anno ma non ancora versata; se negativa, indica un credito verso il PM.">PM ancora da versare:</strong> <span class="amount {{ 'text-success' if annual_pm_due_total < 0 else '' }}">€{{ '%.2f'|format(annual_pm_due_total) }}</span>{% if annual_pm_due_total < 0 %} <span class="text-success">(in credito)</span>{% endif %}</div>
             {% endif %}
             <div class="w-100"></div>
             <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati: entrate dopo IVA e bollo meno spese gia sostenute meno PM gia dato. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span class="net-total {{ grand_total_real_class }}">€{{ '%.2f'|format(grand_total_real) }}</span></div>

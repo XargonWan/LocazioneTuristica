@@ -10,7 +10,7 @@ from .backup import create_backup, finish_request_backup_tracking, get_request_b
 from .db import init_db, SessionLocal
 from .models import Attachment, Income, Expense, Cleaning, PropertyManager
 from .auth_utils import get_current_user
-from .utils import expand_open_recurrences_to_current_year, get_income_effective_amount, get_income_pm_amount, get_income_pm_base_amount, get_income_stamp_duty_amount, get_pm_payment_settlement_amount, get_setting_int
+from .utils import expand_open_recurrences_to_current_year, get_expense_net_amount, get_income_effective_amount, get_income_pm_amount, get_income_pm_base_amount, get_income_stamp_duty_amount, get_pm_payment_settlement_amount, get_setting_int
 
 app = FastAPI(title="LocazioneTuristica")
 
@@ -44,6 +44,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.on_event("startup")
 async def startup_event():
     init_db()
+    # Enable WAL mode for SQLite to handle concurrent background access
+    try:
+        from app.db import engine
+        conn = engine.raw_connection()
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    # Start background iCal sync thread
+    try:
+        from app.routers.calendar import start_ical_background_sync
+        start_ical_background_sync()
+    except Exception as exc:
+        print(f"Failed to start iCal background sync: {exc}")
     # Print route map to help debug 405 issues at startup
     try:
         print('Registered routes:')
@@ -356,7 +372,7 @@ async def overview(request: Request):
                     associated_pm_name = f"{exp.associated_pm.first_name} {exp.associated_pm.last_name}"
             except Exception:
                 associated_pm_name = None
-            item = {'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': 0.0, 'pm_amount': 0.0, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0), 'platform_name': cleaning_platform_by_expense_id.get(exp.id), 'company_name': (exp.associated_company.company_name if getattr(exp, 'associated_company', None) else None)}
+            item = {'type': 'expense', 'date': d, 'gross_amount': float(exp.gross_amount), 'notes': exp.notes if getattr(exp, 'notes', None) else '', 'id': exp.id, 'associated_pm_name': associated_pm_name, 'pm_percent': 0.0, 'pm_amount': 0.0, 'net_after_pm': float(getattr(exp, 'net_after_pm', 0.0) or 0.0), 'net_amount': get_expense_net_amount(exp), 'platform_name': cleaning_platform_by_expense_id.get(exp.id), 'company_name': (exp.associated_company.company_name if getattr(exp, 'associated_company', None) else None)}
             item.update(recurrence_payload(exp))
             entries_by_month[d.month].append(item)
         for m in range(1, 13):
@@ -413,7 +429,7 @@ async def login(request: Request):
 
 
 # Include routers
-from .routers import anagrafiche, auth, money, attachments, pages, cleaning, tax  # noqa
+from .routers import anagrafiche, auth, money, attachments, pages, cleaning, tax, calendar  # noqa
 
 app.include_router(auth.router)
 app.include_router(anagrafiche.router)
@@ -422,4 +438,5 @@ app.include_router(attachments.router)
 app.include_router(cleaning.router)
 app.include_router(pages.router)
 app.include_router(tax.router)
+app.include_router(calendar.router)
 

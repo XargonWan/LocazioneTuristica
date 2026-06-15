@@ -458,6 +458,35 @@ html[data-theme="dark"] .entry-expense, body.dark .entry-expense { color: #ff6b6
   .table-responsive table tbody tr td:last-child { text-align: right; }
 }
 
+/* Hide amounts toggle: replace monetary values with **** for screenshots */
+body.hide-amounts .amount {
+  font-size: 0;
+  line-height: 1;
+}
+body.hide-amounts .amount::before {
+  content: "****";
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+body.hide-amounts .net-total {
+  font-size: 0;
+  line-height: 1;
+}
+body.hide-amounts .net-total::before {
+  content: "****";
+  font-size: inherit;
+  font-weight: 700;
+}
+body.hide-amounts .calendar-event .amount {
+  font-size: 0;
+  line-height: 1;
+}
+body.hide-amounts .calendar-event .amount::before {
+  content: "****";
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
 /* Ensure internal blocks use dark variables in dark mode */
 html[data-theme="dark"] .card, html[data-theme="dark"] .card-body, html[data-theme="dark"] .card-header,
 html[data-theme="dark"] .container, html[data-theme="dark"] .row, html[data-theme="dark"] .col,

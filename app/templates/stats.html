@@ -47,6 +47,7 @@
     </div>
     <div id="stats-totals" class="mb-3 d-flex flex-wrap gap-3 align-items-start">
       <div><strong title="Entrate disponibili del filtro corrente, IVA, marca da bollo e quota PM gia detratti.">Totale Entrate disponibili (IVA, bollo e PM esclusi):</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
+      <div><strong title="Numero di entrate nel filtro corrente.">Numero entrate:</strong> <span id="stats-inc-count">0</span></div>
       <div><strong title="Spese registrate nel filtro corrente, incluse le uscite lorde per eventuali pagamenti fatti ai PM.">Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
       <div><strong title="Quanto risulta gia regolato ai PM nel filtro corrente. Le spese restano comunque conteggiate al lordo.">Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
       <div><strong title="Quota PM maturata sulle entrate del filtro corrente e non ancora coperta dai pagamenti PM, conteggiati al netto. Se negativa, indica un credito verso il PM.">PM da versare:</strong> <span id="stats-pm-due" class="text-warning">€0.00</span> <span id="stats-pm-due-credit" class="text-success d-none">(in credito)</span></div>
@@ -95,7 +96,7 @@
           {% for pl in platforms %}
             <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('platform-select').value='{{ pl.id }}'; reloadSelections();">
               <div>{{ pl.name }}</div>
-              <div><span class="badge bg-success">€{{ (platform_totals[pl.id] if pl.id in platform_totals else 0)|float|round(2) }}</span></div>
+              <div><span class="badge bg-success">€{{ (platform_totals[pl.id] if pl.id in platform_totals else 0)|float|round(2) }}</span> <span class="badge bg-secondary">{{ platform_income_count.get(pl.id, 0) }} entrate</span></div>
             </li>
           {% else %}
             <li class="list-group-item">Nessuna piattaforma</li>
@@ -138,6 +139,7 @@
       // update totals DOM
       const totals = data.totals || {};
       document.getElementById('stats-inc').textContent = `€${Number(totals.income || 0).toFixed(2)}`;
+      document.getElementById('stats-inc-count').textContent = Number(totals.income_count || 0);
       document.getElementById('stats-exp').textContent = `€${Number(totals.expense || 0).toFixed(2)}`;
       document.getElementById('stats-pm').textContent = `€${Number(totals.pm_paid || 0).toFixed(2)}`;
       document.getElementById('stats-pm-pct').textContent = `${Number(totals.pm_percent || 0).toFixed(2)}%`;

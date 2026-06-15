@@ -54,6 +54,16 @@
         </div>
         <div class="form-text">Numero massimo di backup automatici mantenuti. I backup manuali non vengono ruotati.</div>
       </form>
+      <form method="post" action="/settings/update" class="mb-3">
+        <input type="hidden" name="key" value="ical_sync_interval_minutes">
+        <input type="hidden" name="next" value="{{ return_url }}">
+        <label class="form-label" for="ical-sync-interval">Intervallo sincronizzazione iCal (minuti)</label>
+        <div class="d-flex">
+          <input id="ical-sync-interval" class="form-control me-2" name="value" value="{{ (settings | selectattr('key', 'equalto', 'ical_sync_interval_minutes') | list | first).value if settings | selectattr('key', 'equalto', 'ical_sync_interval_minutes') | list else '360' }}">
+          <button class="btn btn-primary">Salva intervallo</button>
+        </div>
+        <div class="form-text">Ogni quanti minuti scaricare automaticamente gli URL iCal configurati. Default: 360 (6 ore).</div>
+      </form>
       <form method="post" action="/settings/backup/manual" class="mb-3">
         <input type="hidden" name="next" value="{{ return_url }}">
         <button class="btn btn-outline-primary">Crea backup manuale completo</button>

@@ -1,0 +1,421 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% set import_status = request.query_params.get('import_status') %}
+{% set linked = request.query_params.get('linked') %}
+{% set added = request.query_params.get('added') %}
+{% set deleted = request.query_params.get('deleted') %}
+{% set imported_count = request.query_params.get('imported') %}
+{% set import_error = request.query_params.get('error') %}
+{% set ical = request.query_params.get('ical') %}
+{% set ical_fetch = request.query_params.get('ical_fetch') %}
+
+<h1>Calendario Prenotazioni</h1>
+
+{% if import_status == 'success' %}
+<div class="alert alert-success">Importazione CSV riuscita: {{ imported_count }} prenotazioni importate/aggiornate.</div>
+{% elif import_status == 'error' %}
+<div class="alert alert-danger">Errore importazione CSV: {{ import_error }}</div>
+{% elif import_status == 'error_no_columns' %}
+<div class="alert alert-danger">Il file CSV non contiene colonne riconoscibili.</div>
+{% endif %}
+{% if linked == 'ok' %}
+<div class="alert alert-success">Collegamento aggiornato.</div>
+{% endif %}
+{% if added == 'ok' %}
+<div class="alert alert-success">Prenotazione aggiunta manualmente.</div>
+{% elif added == 'error' %}
+<div class="alert alert-danger">Errore nell'aggiunta della prenotazione.</div>
+{% endif %}
+{% if deleted == 'ok' %}
+<div class="alert alert-success">Prenotazione eliminata.</div>
+{% endif %}
+{% if ical == 'saved' %}
+<div class="alert alert-success">URL iCal salvato. <a href="#" onclick="document.getElementById('fetchIcalBtn').click(); return false;">Aggiorna ora</a></div>
+{% elif ical == 'deleted' %}
+<div class="alert alert-success">URL iCal rimosso.</div>
+{% endif %}
+{% if ical_fetch %}
+  {% set ical_parts = ical_fetch.split(':') %}
+  {% if ical_parts[0] == 'ok' %}
+<div class="alert alert-success">iCal aggiornato: {{ ical_parts[1] }} prenotazioni importate.{% if ical_parts|length > 2 %} <small class="text-warning">Errori: {{ ical_parts[2] }}</small>{% endif %}</div>
+  {% else %}
+<div class="alert alert-danger">Errore aggiornamento iCal: {{ ical_parts[1] if ical_parts|length > 1 else ical_fetch }}</div>
+  {% endif %}
+{% endif %}
+
+<div class="row mb-3">
+  <div class="col">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <a href="/calendar?year={{ prev_year }}&month={{ prev_month }}" class="btn btn-outline-secondary btn-sm">&larr;</a>
+          <strong class="ms-2 me-2">{{ month_name }} {{ year }}</strong>
+          <a href="/calendar?year={{ next_year }}&month={{ next_month }}" class="btn btn-outline-secondary btn-sm">&rarr;</a>
+          <div class="ms-3">
+            <a href="/calendar?year={{ now.year }}&month={{ now.month }}" class="btn btn-sm btn-outline-primary">Oggi</a>
+          </div>
+          <div class="ms-3">
+            <form method="get" action="/calendar" class="row g-2 align-items-end">
+              <div class="col-auto">
+                <select name="apartment_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                  <option value="">Tutti gli appartamenti</option>
+                  {% for a in apartments %}
+                  <option value="{{ a.id }}" {% if filter_apartment_id == a.id %}selected{% endif %}>{{ a.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </form>
+          </div>
+          <div class="ms-auto">
+            <a href="/calendar/ical" class="btn btn-sm btn-outline-success" title="Scarica file iCal per importare in Google Calendar, Apple Calendar, Outlook"><i class="bi bi-calendar-plus me-1"></i>iCal</a>
+            {% if request.session.get('role') == 'admin' %}
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importCsvModal"><i class="bi bi-upload me-1"></i>Importa CSV</button>
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addBookingModal"><i class="bi bi-plus-circle me-1"></i>Nuova</button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if request.session.get('role') == 'admin' %}
+<div class="card mb-2">
+  <div class="card-body py-2">
+    <details>
+      <summary class="fw-semibold small text-muted" style="cursor:pointer">
+        <i class="bi bi-link-45deg me-1"></i>Sincronizzazione automatica iCal (Airbnb/Booking) — {{ ical_urls|length }} URL configurati
+      </summary>
+      <div class="mt-2">
+        {% if ical_urls %}
+        <div class="table-responsive mb-2">
+          <table class="table table-sm small mb-0">
+            <thead>
+              <tr>
+                <th>URL iCal</th>
+                <th>Piattaforma</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ic in ical_urls %}
+              <tr>
+                <td class="text-truncate" style="max-width:300px"><code>{{ ic.url }}</code></td>
+                <td>{{ ic.platform_id or '—' }}</td>
+                <td>
+                  <form method="post" action="/calendar/ical/delete-url" class="d-inline">
+                    <input type="hidden" name="idx" value="{{ ic.idx }}">
+                    <button class="btn btn-sm btn-outline-danger">Rimuovi</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <form method="post" action="/calendar/ical/fetch-all" class="d-inline">
+          <button id="fetchIcalBtn" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-repeat me-1"></i>Aggiorna ora tutte</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/calendar/ical/save-url" class="row g-2 align-items-end mt-1">
+          <div class="col-auto" style="min-width:300px">
+            <input type="url" name="ical_url" class="form-control form-control-sm" placeholder="URL iCal da Airbnb o Booking.com" required>
+          </div>
+          <div class="col-auto">
+            <select name="platform_id" class="form-select form-select-sm">
+              <option value="">Senza piattaforma</option>
+              {% for p in platforms %}
+              <option value="{{ p.id }}">{{ p.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-sm btn-outline-secondary">Aggiungi URL iCal</button>
+          </div>
+        </form>
+        <div class="form-text small mt-1">Airbnb: Calendario → Esporta → Copia URL iCal. Booking: Calendario → Sincronizza → URL iCal. Incolla qui l'URL per sincronizzare automaticamente le prenotazioni.</div>
+      </div>
+    </details>
+  </div>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+  <div class="card-body p-2">
+    <div class="d-flex flex-wrap">
+      {% for wd in weekdays %}
+      <div class="calendar-day-header text-center py-1 fw-semibold text-muted" style="width:14.28%">{{ wd }}</div>
+      {% endfor %}
+    </div>
+    {% for week in grid %}
+    <div class="d-flex flex-wrap">
+      {% for day in week %}
+      {% if day %}
+      {% set day_str = day.date %}
+      {% set today_str = now.strftime('%Y-%m-%d') %}
+      <div class="calendar-day p-1 {% if day_str == today_str %}calendar-today{% endif %}" style="width:14.28%;min-height:90px;background:var(--card-bg);border:1px solid var(--border);">
+        <div class="fw-semibold small {% if day_str == today_str %}text-primary{% endif %}">{{ day.day }}</div>
+        {% for b in day.bookings %}
+        <div class="calendar-event small p-1 mb-1 rounded" style="font-size:0.65rem;background:#cfe2ff;color:#084298;overflow:hidden;{% if b.platform_name == 'Airbnb' %}background:#ffd7be;color:#663300;{% elif b.platform_name == 'Booking.com' %}background:#cce5ff;color:#004085;{% endif %}">
+          <div class="fw-semibold text-truncate">{{ b.guest_name or 'Ospite' }}</div>
+          <div class="d-flex justify-content-between">
+            <span class="text-truncate">{{ b.apartment_name }}</span>
+            {% if b.gross_amount > 0 %}
+            <span class="amount">€{{ '%.0f'|format(b.gross_amount) }}</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="calendar-day p-1" style="width:14.28%;min-height:90px;background:var(--card-bg);border:1px solid var(--border);">
+        <small>&nbsp;</small>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <h5>Elenco Prenotazioni</h5>
+    {% if bookings %}
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Ospite</th>
+            <th>Appartamento</th>
+            <th>Piattaforma</th>
+            <th>Check-in</th>
+            <th>Check-out</th>
+            <th>Ospiti</th>
+            <th class="text-end">Importo</th>
+            <th>Collegata</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          <tr>
+            <td>{{ b.guest_name or '—' }}</td>
+            <td>{{ b.apartment_name }}</td>
+            <td>{{ b.platform_name or '—' }}</td>
+            <td>{{ b.check_in|format_date }}</td>
+            <td>{{ b.check_out|format_date }}</td>
+            <td>{{ b.guests_count or '—' }}</td>
+            <td class="text-end amount">€{{ '%.2f'|format(b.gross_amount) }}</td>
+            <td>
+              {% if b.income_id %}
+              <span class="badge bg-success">Collegata</span>
+              {% else %}
+              <span class="badge bg-secondary">No</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bookingDetailModal-{{ loop.index }}">Dettagli</button>
+              {% if request.session.get('role') == 'admin' and b.id %}
+              <form method="post" action="/calendar/booking/{{ b.id }}/delete" class="d-inline" onsubmit="return confirm('Eliminare questa prenotazione?')">
+                <button class="btn btn-sm btn-outline-danger">Elimina</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Nessuna prenotazione per questo periodo.
+      {% if request.session.get('role') == 'admin' %}
+      <a href="#" data-bs-toggle="modal" data-bs-target="#importCsvModal">Importa da CSV</a> o <a href="#" data-bs-toggle="modal" data-bs-target="#addBookingModal">aggiungi manualmente</a>.
+      {% endif %}
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{% for b in bookings %}
+<div class="modal fade" id="bookingDetailModal-{{ loop.index }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{{ b.guest_name or 'Ospite' }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Appartamento:</strong> {{ b.apartment_name }}</p>
+        <p><strong>Piattaforma:</strong> {{ b.platform_name or '—' }}</p>
+        <p><strong>Check-in:</strong> {{ b.check_in|format_date }}</p>
+        <p><strong>Check-out:</strong> {{ b.check_out|format_date }}</p>
+        <p><strong>Ospiti:</strong> {{ b.guests_count or '—' }}</p>
+        {% if b.gross_amount > 0 %}
+        <p><strong>Importo lordo:</strong> <span class="amount">€{{ '%.2f'|format(b.gross_amount) }}</span></p>
+        {% endif %}
+        {% if b.platform_fee > 0 %}
+        <p><strong>Commissione piattaforma:</strong> <span class="amount">€{{ '%.2f'|format(b.platform_fee) }}</span></p>
+        {% endif %}
+        {% if b.net_amount > 0 %}
+        <p><strong>Netto:</strong> <span class="amount">€{{ '%.2f'|format(b.net_amount) }}</span></p>
+        {% endif %}
+        <p><strong>Status:</strong> {{ b.status }}</p>
+        {% if b.income_id %}
+        <p><strong>Entrata collegata:</strong> #{{ b.income_id }}</p>
+        {% if request.session.get('role') == 'admin' %}
+        <form method="post" action="/calendar/booking/{{ b.id }}/unlink-income">
+          <button class="btn btn-sm btn-warning">Scollega entrata</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <p><strong>Entrata collegata:</strong> Nessuna</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% if request.session.get('role') == 'admin' %}
+<!-- Import CSV Modal -->
+<div class="modal fade" id="importCsvModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Importa prenotazioni da CSV</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <form method="post" action="/calendar/import/csv" enctype="multipart/form-data">
+      <div class="modal-body">
+        <p class="text-muted small">Carica il file CSV esportato da Airbnb o Booking.com. Il sistema riconosce automaticamente le colonne.</p>
+        <div class="mb-3">
+          <label class="form-label">Piattaforma</label>
+          <select name="platform_id" class="form-select" required>
+            <option value="">Seleziona piattaforma...</option>
+            {% for p in platforms %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">File CSV</label>
+          <input type="file" name="file" class="form-control" accept=".csv,.txt" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        <button type="submit" class="btn btn-primary">Importa</button>
+      </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Booking Modal -->
+<div class="modal fade" id="addBookingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Nuova prenotazione</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <form method="post" action="/calendar/booking/add">
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Nome ospite</label>
+          <input type="text" name="guest_name" class="form-control" required>
+        </div>
+        <div class="row mb-2">
+          <div class="col">
+            <label class="form-label">Check-in</label>
+            <input type="date" name="check_in" class="form-control" required>
+          </div>
+          <div class="col">
+            <label class="form-label">Check-out</label>
+            <input type="date" name="check_out" class="form-control" required>
+          </div>
+        </div>
+        <div class="row mb-2">
+          <div class="col">
+            <label class="form-label">Appartamento</label>
+            <select name="apartment_id" class="form-select">
+              <option value="">---</option>
+              {% for a in apartments %}
+              <option value="{{ a.id }}">{{ a.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col">
+            <label class="form-label">Piattaforma</label>
+            <select name="platform_id" class="form-select">
+              <option value="">---</option>
+              {% for p in platforms %}
+              <option value="{{ p.id }}">{{ p.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="row mb-2">
+          <div class="col">
+            <label class="form-label">Importo lordo (€)</label>
+            <input type="number" name="gross_amount" step="0.01" class="form-control" value="0">
+          </div>
+          <div class="col">
+            <label class="form-label">Commissione (€)</label>
+            <input type="number" name="platform_fee" step="0.01" class="form-control" value="0">
+          </div>
+        </div>
+        <div class="row mb-2">
+          <div class="col">
+            <label class="form-label">Ospiti</label>
+            <input type="number" name="guests_count" class="form-control">
+          </div>
+          <div class="col">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+              <option value="confirmed">Confermata</option>
+              <option value="pending">In attesa</option>
+              <option value="cancelled">Cancellata</option>
+            </select>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Telefono</label>
+          <input type="text" name="phone" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Note</label>
+          <textarea name="notes" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        <button type="submit" class="btn btn-primary">Salva</button>
+      </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<style>
+.calendar-day:hover {
+  background: rgba(13,110,253,0.04) !important;
+}
+.calendar-today {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.calendar-event {
+  overflow: hidden;
+}
+</style>
+{% endblock %}

@@ -31,8 +31,12 @@
         <form method="post" action="/money/incomes/{{ income.id }}/edit" id="incomeEditForm" enctype="multipart/form-data">
           <input type="hidden" name="next" value="{{ next if next is defined and next else '' }}">
           <div class="mb-3">
-            <label>Data</label>
+            <label>Data check-in</label>
             <input type="date" name="date" class="form-control" value="{{ income.date }}" required>
+          </div>
+          <div class="mb-3">
+            <label>Check-out <small class="text-muted">(opzionale, per prenotazioni multi-giorno)</small></label>
+            <input type="date" name="check_out" class="form-control" value="{{ income.check_out or '' }}">
           </div>
           <div class="mb-3">
             <label>Importo lordo</label>

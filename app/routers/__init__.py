@@ -1,1 +1,1 @@
-from . import auth, anagrafiche, money, attachments, pages, cleaning  # noqa
+from . import auth, anagrafiche, money, attachments, pages, cleaning, calendar  # noqa

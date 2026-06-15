@@ -344,7 +344,7 @@ def _get_direct_booking_platform(db):
     )
 
 
-def _populate_income_fields(income, gross_amount, vat_percent, pm_percent, net_amount, entry_date, apartment_id, platform_id, associated_pm_id, notes, has_stamp_duty=False, stamp_duty_amount=0.0):
+def _populate_income_fields(income, gross_amount, vat_percent, pm_percent, net_amount, entry_date, apartment_id, platform_id, associated_pm_id, notes, has_stamp_duty=False, stamp_duty_amount=0.0, check_out=None):
     net_amount = round(float(net_amount or 0.0), 2)
     resolved_stamp_duty_amount = round(float(stamp_duty_amount or 0.0), 2) if has_stamp_duty else 0.0
     pm_base_amount = round(net_amount - resolved_stamp_duty_amount, 2)
@@ -358,6 +358,7 @@ def _populate_income_fields(income, gross_amount, vat_percent, pm_percent, net_a
     income.pm_amount = pm_amount
     income.net_after_pm = round(pm_base_amount - pm_amount, 2)
     income.date = entry_date
+    income.check_out = check_out or None
     income.apartment_id = apartment_id
     income.platform_id = platform_id
     income.associated_pm_id = associated_pm_id
@@ -824,7 +825,7 @@ async def incomes_index(request: Request):
 
 
 @router.post("/incomes/add")
-async def add_income(request: Request, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), has_stamp_duty: str = Form(None), stamp_duty_amount: float = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
+async def add_income(request: Request, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), check_out: str = Form(None), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), has_stamp_duty: str = Form(None), stamp_duty_amount: float = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -851,6 +852,7 @@ async def add_income(request: Request, gross_amount: float = Form(None), net_amo
             notes,
             resolved_has_stamp_duty,
             resolved_stamp_duty_amount,
+            check_out=check_out,
         )
         db.add(e)
         db.commit()
@@ -902,7 +904,7 @@ async def edit_income_get(request: Request, income_id: int):
         db.close()
 
 @router.api_route('/incomes/{income_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associate_pm: str = Form(None), has_stamp_duty: str = Form(None), stamp_duty_amount: float = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
+async def edit_income_post(request: Request, income_id: int, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), check_out: str = Form(None), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associate_pm: str = Form(None), has_stamp_duty: str = Form(None), stamp_duty_amount: float = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -976,6 +978,7 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
                     notes,
                     resolved_has_stamp_duty,
                     resolved_stamp_duty_amount,
+                    check_out=check_out,
                 )
                 e.orig_recurrence_id = None
                 db.add(e)
@@ -1000,6 +1003,7 @@ async def edit_income_post(request: Request, income_id: int, gross_amount: float
                 notes,
                 resolved_has_stamp_duty,
                 resolved_stamp_duty_amount,
+                check_out=check_out,
             )
             db.add(e)
             db.commit()

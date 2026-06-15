@@ -120,6 +120,7 @@ async def stats_view(request: Request, year: int = None):
                 company_totals[exp.associated_company_id] = company_totals.get(exp.associated_company_id, 0.0) + float(exp.gross_amount or 0.0)
         # platform totals (incomes)
         platform_totals = {}
+        platform_income_count = {}
         for inc in incomes:
             try:
                 d = datetime.strptime(inc.date, '%Y-%m-%d')
@@ -129,7 +130,8 @@ async def stats_view(request: Request, year: int = None):
                 continue
             if inc.platform_id:
                 platform_totals[inc.platform_id] = platform_totals.get(inc.platform_id, 0.0) + float(inc.gross_amount or 0.0)
-        return templates.TemplateResponse(request, 'stats.html', {"pms": pms, "companies": companies, "platforms": platforms, "pm_totals": pm_totals, "company_totals": company_totals, "platform_totals": platform_totals, "year": year, "now": now, "available_years": available_years})
+                platform_income_count[inc.platform_id] = platform_income_count.get(inc.platform_id, 0) + 1
+        return templates.TemplateResponse(request, 'stats.html', {"pms": pms, "companies": companies, "platforms": platforms, "pm_totals": pm_totals, "company_totals": company_totals, "platform_totals": platform_totals, "platform_income_count": platform_income_count, "year": year, "now": now, "available_years": available_years})
     finally:
         db.close()
 
@@ -155,6 +157,7 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
         total_pm_accrued = 0.0
         total_pm_paid = 0.0
         total_pm_payment_cash = 0.0
+        income_count = 0
         for inc in incomes:
             try:
                 d = datetime.strptime(inc.date, '%Y-%m-%d')
@@ -182,6 +185,7 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
             total_income += amt
             total_income_before_pm += income_before_pm
             total_pm_accrued += pm_amount
+            income_count += 1
         total_expense = 0.0
         for exp in expenses:
             try:
@@ -216,6 +220,7 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
             'pm_due': pm_due,
             'grand_total_real': grand_total_real,
             'grand_total_virtual': grand_total_virtual,
+            'income_count': income_count,
         }
         if total_income:
             totals['pm_percent'] = round((total_pm_paid / total_income) * 100, 2)
