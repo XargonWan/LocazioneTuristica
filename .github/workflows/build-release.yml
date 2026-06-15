@@ -32,6 +32,7 @@ jobs:
         continue-on-error: true
         id: gitversion
         run: |
+          echo "semVer=0.0.0" >> "$GITHUB_OUTPUT"
           output=$(dotnet-gitversion /config GitVersion.yml /output json 2>&1)
           echo "$output"
           json=$(echo "$output" | awk 'BEGIN{found=0} /^\s*{/ {found=1} {if (found) print} /^\s*}/ {exit}')
@@ -39,8 +40,7 @@ jobs:
             semver=$(echo "$json" | jq -r '.MajorMinorPatch')
             echo "semVer=${semver}" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::dotnet-gitversion did not produce valid JSON"
-            echo "semVer=0.0.0" >> "$GITHUB_OUTPUT"
+            echo "::error::dotnet-gitversion did not produce valid JSON. Using fallback version 0.0.0. Output was: $output"
           fi
 
   build-images:
