@@ -142,7 +142,7 @@ jobs:
       contents: read
       packages: write
     env:
-      IMAGE_NAME: locazioneturistica
+      IMAGE_NAME: xargonwan/locazioneturistica
     steps:
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
