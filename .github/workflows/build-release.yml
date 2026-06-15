@@ -61,7 +61,7 @@ jobs:
       packages: write
       id-token: write
     env:
-      IMAGE_NAME: locazioneturistica
+      IMAGE_NAME: xargonwan/locazioneturistica
     steps:
       - uses: actions/checkout@v6
         with:
