@@ -105,6 +105,7 @@ class Expense(Base):
     __tablename__ = "expense"
     id = Column(Integer, primary_key=True)
     apartment_id = Column(Integer, ForeignKey("apartment.id"), nullable=True)
+    platform_id = Column(Integer, ForeignKey("platform.id"), nullable=True)
     date = Column(String, nullable=True)
     gross_amount = Column(DECIMAL(10, 2), default=0.0)
     vat_percent = Column(DECIMAL(5, 2), default=22.0)
@@ -125,6 +126,7 @@ class Expense(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
     apartment = relationship("Apartment")
+    platform = relationship("Platform")
     associated_pm = relationship("PropertyManager")
     associated_company = relationship("Company")
     recurrence = relationship("Recurrence", foreign_keys=[recurrence_id])

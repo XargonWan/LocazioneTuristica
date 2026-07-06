@@ -65,6 +65,15 @@
         </select>
       </div>
       <div class="mb-3">
+        <label>Piattaforma</label>
+        <select name="platform_id" class="form-control">
+          <option value="">---</option>
+          {% for p in platforms %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
         <label>Allegati (seleziona più)</label>
         <select name="attachment_ids" class="form-control" multiple>
           {% for a in attachments %}

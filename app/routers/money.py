@@ -289,7 +289,7 @@ def _resolve_income_amounts(gross_amount, vat_percent, explicit_net_amount):
     return _resolve_taxable_amounts(gross_amount, vat_percent, explicit_net_amount)
 
 
-def _populate_expense_fields(expense, gross_amount, vat_percent, net_amount, entry_date, apartment_id, associated_pm_id, associated_company_id, notes, is_cleaning):
+def _populate_expense_fields(expense, gross_amount, vat_percent, net_amount, entry_date, apartment_id, associated_pm_id, associated_company_id, notes, is_cleaning, platform_id=None):
     expense.gross_amount = gross_amount
     expense.vat_percent = vat_percent
     expense.net_amount = net_amount
@@ -298,6 +298,7 @@ def _populate_expense_fields(expense, gross_amount, vat_percent, net_amount, ent
     expense.net_after_pm = float(net_amount or 0.0)
     expense.date = entry_date
     expense.apartment_id = apartment_id
+    expense.platform_id = platform_id
     expense.associated_pm_id = associated_pm_id
     expense.associated_company_id = associated_company_id
     expense.notes = notes
@@ -380,7 +381,7 @@ async def expenses_index(request: Request):
         attachments_by_expense = {}
         platform_name_by_expense = {}
         if not create_mode:
-            expenses = db.query(Expense).options(joinedload(Expense.recurrence)).order_by(Expense.date.desc()).limit(50).all()
+            expenses = db.query(Expense).options(joinedload(Expense.recurrence), joinedload(Expense.platform)).order_by(Expense.date.desc()).limit(50).all()
             if expenses:
                 expense_ids = [e.id for e in expenses if e.id]
                 if expense_ids:
@@ -399,6 +400,7 @@ async def expenses_index(request: Request):
                         platform_name_by_expense[cleaning.expense_id] = linked_platform.name if linked_platform else None
         apartments = db.query(Apartment).all()
         pms = db.query(PropertyManager).all()
+        platforms = db.query(Platform).order_by(Platform.name).all()
         cleaning_companies = db.query(Company).filter(Company.is_cleaning_company == True).order_by(Company.company_name).all()
         attachments = (
             db.query(Attachment)
@@ -439,7 +441,8 @@ async def expenses_index(request: Request):
                 e.pm_percent = float(getattr(e, 'pm_percent', 0.0) or 0.0)
                 e.pm_amount = float(getattr(e, 'pm_amount', 0.0) or 0.0)
                 e.net_after_pm = float(getattr(e, 'net_after_pm', 0.0) or 0.0)
-            e.platform_name = platform_name_by_expense.get(e.id)
+            direct_platform = getattr(e, 'platform', None)
+            e.platform_name = direct_platform.name if direct_platform else platform_name_by_expense.get(e.id)
         expense_upload_return = _build_route_url(
             "/money/expenses",
             mode=('create' if create_mode else None),
@@ -447,13 +450,13 @@ async def expenses_index(request: Request):
             next=next_url,
         )
         expense_create_url = _build_route_url("/money/expenses", mode='create', next=next_url)
-        return templates.TemplateResponse(request, "expenses_index.html", {"expenses": expenses, "apartments": apartments, "pms": pms, "cleaning_companies": cleaning_companies, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date, "create_mode": create_mode, "expense_upload_return": expense_upload_return, "expense_create_url": expense_create_url})
+        return templates.TemplateResponse(request, "expenses_index.html", {"expenses": expenses, "apartments": apartments, "pms": pms, "platforms": platforms, "cleaning_companies": cleaning_companies, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date, "create_mode": create_mode, "expense_upload_return": expense_upload_return, "expense_create_url": expense_create_url})
     finally:
         db.close()
 
 
 @router.post("/expenses/add")
-async def add_expense(request: Request, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
+async def add_expense(request: Request, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), attachment_ids: List[int] = Form(None), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), associate_pm: str = Form(None), notes: str = Form(''), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -479,6 +482,7 @@ async def add_expense(request: Request, gross_amount: float = Form(None), net_am
             associated_company_id,
             notes,
             (is_cleaning == '1'),
+            platform_id=platform_id,
         )
         db.add(e)
         db.commit()
@@ -509,6 +513,7 @@ async def edit_expense_get(request: Request, expense_id: int):
         display_recurrence = e.recurrence or e.orig_recurrence
         apartments = db.query(Apartment).all()
         pms = db.query(PropertyManager).all()
+        platforms = db.query(Platform).order_by(Platform.name).all()
         companies = db.query(Company).all()
         attached = db.query(Attachment).filter(Attachment.expense_id == e.id).all()
         next_url = request.query_params.get('next') or None
@@ -517,12 +522,12 @@ async def edit_expense_get(request: Request, expense_id: int):
         series_recurrence_id = e.recurrence_id or e.orig_recurrence_id
         if series_recurrence_id:
             series_items = db.query(Expense).filter(Expense.recurrence_id == series_recurrence_id).order_by(Expense.date).all()
-        return templates.TemplateResponse(request, 'expense_edit.html', {"expense": e, "apartments": apartments, "pms": pms, "companies": companies, "attached": attached, "next": next_url, "series_items": series_items, "display_recurrence": display_recurrence})
+        return templates.TemplateResponse(request, 'expense_edit.html', {"expense": e, "apartments": apartments, "pms": pms, "platforms": platforms, "companies": companies, "attached": attached, "next": next_url, "series_items": series_items, "display_recurrence": display_recurrence})
     finally:
         db.close()
 
 @router.api_route('/expenses/{expense_id}/edit', methods=["POST","PUT","PATCH"])
-async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), associate_pm: str = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
+async def edit_expense_post(request: Request, expense_id: int, gross_amount: float = Form(None), net_amount: float = Form(None), vat_percent: float = Form(22.0), pm_percent: float = Form(0.0), date: str = Form(...), apartment_id: int = Form(None), platform_id: int = Form(None), associated_pm_id: int = Form(None), associated_company_id: int = Form(None), is_cleaning: str = Form('0'), associate_pm: str = Form(None), notes: str = Form(''), recurrence: str = Form('none'), recurrence_start: str = Form(None), recurrence_end: str = Form(None), apply_to: str = Form('single'), next: str = Form(None), files: list[UploadFile] | None = File(None, alias="file"), user=Depends(admin_required)):
     await log_request_form(request)
     db = SessionLocal()
     try:
@@ -595,6 +600,7 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
                     associated_company_id,
                     notes,
                     (is_cleaning == '1'),
+                    platform_id=platform_id,
                 )
                 e.orig_recurrence_id = None
                 db.add(e)
@@ -617,6 +623,7 @@ async def edit_expense_post(request: Request, expense_id: int, gross_amount: flo
                 associated_company_id,
                 notes,
                 (is_cleaning == '1'),
+                platform_id=platform_id,
             )
             db.add(e)
             db.commit()

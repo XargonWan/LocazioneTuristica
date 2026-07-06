@@ -60,6 +60,15 @@
             </select>
           </div>
           <div class="mb-3">
+            <label>Piattaforma</label>
+            <select name="platform_id" class="form-control">
+              <option value="">---</option>
+              {% for p in platforms %}
+                <option value="{{ p.id }}" {% if p.id == expense.platform_id %}selected{% endif %}>{{ p.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
             {% set has_pm = expense.associated_pm_id is not none and expense.associated_pm_id != '' %}
             <label><input type="checkbox" id="associate_pm_checkbox" name="associate_pm" {% if has_pm %}checked{% endif %}> Pagamento a (PM)</label>
             <select name="associated_pm_id" class="form-control" id="associated_pm_select" {% if not has_pm %}disabled{% endif %}>

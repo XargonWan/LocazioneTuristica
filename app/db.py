@@ -53,6 +53,7 @@ def init_db():
                 except Exception:
                     pass
             ensure_column('expense', 'orig_recurrence_id', 'INTEGER REFERENCES recurrence(id)')
+            ensure_column('expense', 'platform_id', 'INTEGER REFERENCES platform(id)')
             ensure_column('income', 'orig_recurrence_id', 'INTEGER REFERENCES recurrence(id)')
             ensure_column('income', 'has_stamp_duty', 'INTEGER DEFAULT 0')
             ensure_column('income', 'stamp_duty_amount', 'DECIMAL(10, 2) DEFAULT 0.0')
