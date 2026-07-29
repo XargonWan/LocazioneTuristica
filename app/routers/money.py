@@ -402,6 +402,7 @@ async def expenses_index(request: Request):
         pms = db.query(PropertyManager).all()
         platforms = db.query(Platform).order_by(Platform.name).all()
         cleaning_companies = db.query(Company).filter(Company.is_cleaning_company == True).order_by(Company.company_name).all()
+        companies = db.query(Company).order_by(Company.company_name).all()
         attachments = (
             db.query(Attachment)
             .filter(Attachment.expense_id == None, Attachment.income_id == None)
@@ -450,7 +451,7 @@ async def expenses_index(request: Request):
             next=next_url,
         )
         expense_create_url = _build_route_url("/money/expenses", mode='create', next=next_url)
-        return templates.TemplateResponse(request, "expenses_index.html", {"expenses": expenses, "apartments": apartments, "pms": pms, "platforms": platforms, "cleaning_companies": cleaning_companies, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date, "create_mode": create_mode, "expense_upload_return": expense_upload_return, "expense_create_url": expense_create_url})
+        return templates.TemplateResponse(request, "expenses_index.html", {"expenses": expenses, "apartments": apartments, "pms": pms, "platforms": platforms, "cleaning_companies": cleaning_companies, "companies": companies, "attachments": attachments, "attachments_by_expense": attachments_by_expense, "default_apartment_id": default_apartment_id, "default_associated_pm_id": default_associated_pm_id, "default_pm_percent": default_pm_percent, "apt_pm_map": apt_pm_map, "next": next_url, "default_date": default_date, "create_mode": create_mode, "expense_upload_return": expense_upload_return, "expense_create_url": expense_create_url})
     finally:
         db.close()
 

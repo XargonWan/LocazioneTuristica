@@ -46,6 +46,15 @@
           <span class="text-muted" id="selectedCleaningCompanyLabel">Nessuna ditta selezionata</span>
         </div>
       </div>
+      <div class="mb-3" id="associatedCompanyControls">
+        <label>Associata a (Ditta)</label>
+        <select class="form-control" id="associated_company_select">
+          <option value="">---</option>
+          {% for c in companies %}
+          <option value="{{ c.id }}">{{ c.company_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="mb-3">
         <label title="L'imponibile e l'importo al netto dell'IVA, base su cui si calcola l'IVA.">Imponibile</label>
         <input type="number" name="net_amount" step="0.01" class="form-control" id="expense_net_amount" value="" placeholder="Calcolato automaticamente se inserisci il lordo">
@@ -243,9 +252,33 @@
         const modalEl = document.getElementById('cleaningCompanyModal');
         const modalSelect = document.getElementById('cleaning_company_modal_select');
         const saveBtn = document.getElementById('saveCleaningCompanySelection');
+        const associatedControls = document.getElementById('associatedCompanyControls');
+        const associatedSelect = document.getElementById('associated_company_select');
 
         if(!cleaningCheckbox || !cleaningCompanyInput || !cleaningControls || !cleaningLabel || !openCleaningCompanyBtn || !modalEl){
           return;
+        }
+
+        function updateAssociatedCompanyMode(){
+          if(!associatedControls || !associatedSelect){
+            return;
+          }
+          if(cleaningCheckbox.checked){
+            // In modalita pulizia la ditta e gestita dal modal dedicato.
+            associatedControls.classList.add('d-none');
+          } else {
+            associatedControls.classList.remove('d-none');
+            // Il select libero alimenta l'hidden condiviso.
+            cleaningCompanyInput.value = associatedSelect.value || '';
+          }
+        }
+
+        if(associatedSelect){
+          associatedSelect.addEventListener('change', () => {
+            if(!cleaningCheckbox.checked){
+              cleaningCompanyInput.value = associatedSelect.value || '';
+            }
+          });
         }
 
         function getCleaningCompanyModal(){
@@ -290,6 +323,8 @@
 
         cleaningCheckbox.addEventListener('change', () => {
           if(cleaningCheckbox.checked){
+            cleaningCompanyInput.value = '';
+            updateAssociatedCompanyMode();
             updateCleaningCompanyUI();
             openCleaningCompanyModal();
             return;
@@ -301,6 +336,7 @@
             modalSelect.classList.remove('is-invalid');
           }
           updateCleaningCompanyUI();
+          updateAssociatedCompanyMode();
         });
 
         openCleaningCompanyBtn.addEventListener('click', openCleaningCompanyModal);
@@ -337,6 +373,7 @@
         });
 
         updateCleaningCompanyUI();
+        updateAssociatedCompanyMode();
       })();
     </script>
     {% if not create_mode %}
