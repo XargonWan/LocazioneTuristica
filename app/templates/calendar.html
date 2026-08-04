@@ -157,7 +157,7 @@
       <div class="calendar-day p-1 {% if day_str == today_str %}calendar-today{% endif %}" style="width:14.28%;min-height:90px;background:var(--card-bg);border:1px solid var(--border);">
         <div class="fw-semibold small {% if day_str == today_str %}text-primary{% endif %}">{{ day.day }}</div>
         {% for b in day.bookings %}
-        <div class="calendar-event small p-1 mb-1 rounded" style="font-size:0.65rem;background:#cfe2ff;color:#084298;overflow:hidden;{% if b.platform_name == 'Airbnb' %}background:#ffd7be;color:#663300;{% elif b.platform_name == 'Booking.com' %}background:#cce5ff;color:#004085;{% endif %}">
+        <div class="calendar-event small p-1 mb-1 rounded" data-bs-toggle="modal" data-bs-target="#bookingDetailModal-{{ b.idx }}" style="font-size:0.65rem;background:#cfe2ff;color:#084298;overflow:hidden;cursor:pointer;{% if b.platform_name == 'Airbnb' %}background:#ffd7be;color:#663300;{% elif b.platform_name == 'Booking.com' %}background:#cce5ff;color:#004085;{% endif %}">
           <div class="fw-semibold text-truncate">{{ b.guest_name or 'Ospite' }}</div>
           <div class="d-flex justify-content-between">
             <span class="text-truncate">{{ b.apartment_name }}</span>
@@ -216,7 +216,7 @@
               {% endif %}
             </td>
             <td class="text-end">
-              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bookingDetailModal-{{ loop.index }}">Dettagli</button>
+              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bookingDetailModal-{{ b.idx }}">Dettagli</button>
               {% if request.session.get('role') == 'admin' and b.id %}
               <form method="post" action="/calendar/booking/{{ b.id }}/delete" class="d-inline" onsubmit="return confirm('Eliminare questa prenotazione?')">
                 <button class="btn btn-sm btn-outline-danger">Elimina</button>
@@ -239,7 +239,7 @@
 </div>
 
 {% for b in bookings %}
-<div class="modal fade" id="bookingDetailModal-{{ loop.index }}" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="bookingDetailModal-{{ b.idx }}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">

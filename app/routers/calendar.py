@@ -95,6 +95,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None, a
         incomes = incomes.all()
 
         calendar_bookings = []
+        booking_idx = 0
         for b in platform_bookings:
             try:
                 ci = datetime.strptime(b.check_in, "%Y-%m-%d") if b.check_in else None
@@ -106,6 +107,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None, a
             apt_name = b.apartment.name if b.apartment else ""
             plat_name = b.platform.name if b.platform else ""
             calendar_bookings.append({
+                "idx": booking_idx,
                 "id": b.id,
                 "guest_name": b.guest_name or "",
                 "check_in": ci,
@@ -119,6 +121,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None, a
                 "income_id": b.income_id,
                 "guests_count": b.guests_count,
             })
+            booking_idx += 1
 
         linked_income_ids = {b.income_id for b in platform_bookings if b.income_id}
         for inc in incomes:
@@ -141,6 +144,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None, a
             plat_name = inc.platform.name if inc.platform else ""
             apt_name = inc.apartment.name if inc.apartment else ""
             calendar_bookings.append({
+                "idx": booking_idx,
                 "id": None,
                 "guest_name": inc.notes or "",
                 "check_in": d,
@@ -154,6 +158,7 @@ async def calendar_view(request: Request, year: int = None, month: int = None, a
                 "income_id": inc.id,
                 "guests_count": None,
             })
+            booking_idx += 1
 
         calendar_bookings.sort(key=lambda x: x["check_in"])
         grid = _build_calendar_grid(year, month, calendar_bookings)
