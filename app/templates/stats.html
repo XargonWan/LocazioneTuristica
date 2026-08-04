@@ -46,14 +46,19 @@
       </div>
     </div>
     <div id="stats-totals" class="mb-3 d-flex flex-wrap gap-3 align-items-start">
-      <div><strong title="Entrate disponibili del filtro corrente, IVA, marca da bollo e quota PM gia detratti.">Totale Entrate disponibili (IVA, bollo e PM esclusi):</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
-      <div><strong title="Numero di entrate nel filtro corrente.">Numero entrate:</strong> <span id="stats-inc-count">0</span></div>
+      <div><strong title="Entrate disponibili del filtro corrente, IVA, marca da bollo e quota PM già detratti.">Entrate nette:</strong> <span id="stats-inc" class="text-success">€0.00</span></div>
+      <div><strong title="Numero di entrate registrate nel filtro corrente.">Numero entrate:</strong> <span id="stats-inc-count">0</span></div>
       <div><strong title="Spese registrate nel filtro corrente, incluse le uscite lorde per eventuali pagamenti fatti ai PM.">Totale Spese (lordo):</strong> <span id="stats-exp" class="text-danger">€0.00</span></div>
-      <div><strong title="Quanto risulta gia regolato ai PM nel filtro corrente. Le spese restano comunque conteggiate al lordo.">Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
+      <div class="w-100"></div>
+      <div><strong title="Quanto risulta già regolato ai PM nel filtro corrente. Le spese restano comunque conteggiate al lordo.">Versato ai PM:</strong> <span id="stats-pm" class="text-muted">€0.00</span> (<span id="stats-pm-pct">0.00%</span>)</div>
       <div><strong title="Quota PM maturata sulle entrate del filtro corrente e non ancora coperta dai pagamenti PM, conteggiati al netto. Se negativa, indica un credito verso il PM.">PM da versare:</strong> <span id="stats-pm-due" class="text-warning">€0.00</span> <span id="stats-pm-due-credit" class="text-success d-none">(in credito)</span></div>
       <div class="w-100"></div>
+      <div><strong title="Notti occupate dalle entrate del filtro corrente: check-out meno check-in; se manca il check-out conta 1 notte. Il denominatore considera solo gli anni con almeno un'entrata.">Notti occupate:</strong> <span id="stats-nights">0</span> / <span id="stats-nights-denom">365</span> (<span id="stats-nights-pct">0.00%</span>)</div>
+      <div><strong title="Media del netto incassato (IVA, bollo e quota PM esclusi) diviso le notti occupate del filtro corrente.">Netto medio a notte:</strong> <span id="stats-net-per-night" class="text-success">€0.00</span></div>
+      <div><strong title="Media del lordo incassato diviso le notti occupate del filtro corrente.">Lordo medio a notte:</strong> <span id="stats-gross-per-night">€0.00</span></div>
+      <div class="w-100"></div>
       <div><strong class="text-decoration-underline" title="Saldo reale dei soldi effettivamente transitati nel filtro corrente: entrate dopo IVA e bollo prima del PM meno spese non PM meno esborso lordo dei pagamenti PM. Se devi ancora qualcosa al PM, qui resta ancora dentro.">Gran totale reale:</strong> <span id="stats-grand-real" class="net-zero">€0.00</span></div>
-      <div><strong class="text-decoration-underline" title="Saldo virtuale del filtro corrente ipotizzando di aver gia regolato tutto il PM ancora dovuto o di aver compensato l'eventuale credito PM.">Gran totale virtuale:</strong> <span id="stats-grand-virtual" class="net-zero">€0.00</span></div>
+      <div><strong class="text-decoration-underline" title="Saldo virtuale del filtro corrente ipotizzando di aver già regolato tutto il PM ancora dovuto o di aver compensato l'eventuale credito PM.">Gran totale virtuale:</strong> <span id="stats-grand-virtual" class="net-zero">€0.00</span></div>
     </div>
     <canvas id="monthly-chart"></canvas>
   </div>
@@ -95,8 +100,8 @@
         <ul class="list-group">
           {% for pl in platforms %}
             <li class="list-group-item d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="document.getElementById('platform-select').value='{{ pl.id }}'; reloadSelections();">
-              <div>{{ pl.name }}</div>
-              <div><span class="badge bg-success">€{{ (platform_totals[pl.id] if pl.id in platform_totals else 0)|float|round(2) }}</span> <span class="badge bg-secondary">{{ platform_income_count.get(pl.id, 0) }} entrate</span></div>
+              <div class="text-nowrap">{{ pl.name }}</div>
+              <div class="text-nowrap"><span class="badge bg-success">€{{ (platform_totals[pl.id] if pl.id in platform_totals else 0)|float|round(2) }}</span> <span class="badge bg-secondary">{{ platform_income_count.get(pl.id, 0) }} entrate</span></div>
             </li>
           {% else %}
             <li class="list-group-item">Nessuna piattaforma</li>
@@ -150,6 +155,11 @@
       pmDueEl.classList.remove('text-warning', 'text-success');
       pmDueEl.classList.add(pmDueValue < 0 ? 'text-success' : 'text-warning');
       pmDueCreditEl.classList.toggle('d-none', pmDueValue >= 0);
+      document.getElementById('stats-nights').textContent = Number(totals.nights || 0);
+      document.getElementById('stats-nights-denom').textContent = Number(totals.nights_denominator || 365);
+      document.getElementById('stats-nights-pct').textContent = `${Number(totals.nights_percent || 0).toFixed(2)}%`;
+      document.getElementById('stats-net-per-night').textContent = `€${Number(totals.net_per_night || 0).toFixed(2)}`;
+      document.getElementById('stats-gross-per-night').textContent = `€${Number(totals.gross_per_night || 0).toFixed(2)}`;
       updateNetTotal('stats-grand-real', totals.grand_total_real || 0);
       updateNetTotal('stats-grand-virtual', totals.grand_total_virtual || 0);
 

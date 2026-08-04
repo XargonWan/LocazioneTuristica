@@ -61,6 +61,18 @@ def _matches_stats_year(entry_year: int, selected_year: int) -> bool:
     return selected_year == STATS_ALL_YEARS or entry_year == selected_year
 
 
+def _income_nights(inc, entry_date: datetime) -> int:
+    """Notti occupate da un'entrata: check-out meno data (check-in), minimo 1 notte."""
+    if inc.check_out:
+        try:
+            check_out = datetime.strptime(inc.check_out, '%Y-%m-%d')
+        except Exception:
+            check_out = None
+        if check_out and check_out > entry_date:
+            return (check_out - entry_date).days
+    return 1
+
+
 def _get_income_pm_id(entry) -> int | None:
     return getattr(entry, 'associated_pm_id', None) or (entry.apartment.property_manager_id if getattr(entry, 'apartment', None) else None)
 
@@ -158,6 +170,9 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
         total_pm_paid = 0.0
         total_pm_payment_cash = 0.0
         income_count = 0
+        total_nights = 0
+        total_gross = 0.0
+        income_years = set()
         for inc in incomes:
             try:
                 d = datetime.strptime(inc.date, '%Y-%m-%d')
@@ -172,6 +187,7 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
                     continue
             if platform_id and inc.platform_id != platform_id:
                 continue
+            income_years.add(d.year)
             pm_amount = _get_income_pm_amount(inc, pms_by_id)
             # Use net_after_pm when available, otherwise compute from net - pm
             amt = float(getattr(inc, 'net_after_pm', None) or 0.0)
@@ -186,6 +202,8 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
             total_income_before_pm += income_before_pm
             total_pm_accrued += pm_amount
             income_count += 1
+            total_nights += _income_nights(inc, d)
+            total_gross += float(inc.gross_amount or 0.0)
         total_expense = 0.0
         for exp in expenses:
             try:
@@ -213,6 +231,10 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
         pm_due = total_pm_accrued - total_pm_paid
         grand_total_real = total_income_before_pm - total_non_pm_expense - total_pm_payment_cash
         grand_total_virtual = grand_total_real - pm_due
+        nights_denominator = 365
+        if year == STATS_ALL_YEARS and income_years:
+            nights_denominator = 365 * len(income_years)
+        nights_percent = round((total_nights / nights_denominator) * 100, 2) if nights_denominator else 0.0
         totals = {
             'income': total_income,
             'expense': total_expense,
@@ -221,6 +243,11 @@ async def api_stats_monthly(year: int = None, request: Request = None, pm_id: in
             'grand_total_real': grand_total_real,
             'grand_total_virtual': grand_total_virtual,
             'income_count': income_count,
+            'nights': total_nights,
+            'nights_denominator': nights_denominator,
+            'nights_percent': nights_percent,
+            'gross_per_night': round(total_gross / total_nights, 2) if total_nights else 0.0,
+            'net_per_night': round(total_income / total_nights, 2) if total_nights else 0.0,
         }
         if total_income:
             totals['pm_percent'] = round((total_pm_paid / total_income) * 100, 2)

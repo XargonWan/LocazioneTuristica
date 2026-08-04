@@ -19,6 +19,11 @@ def test_stats_template_years_list():
     assert 'id="stats-pm-due"' in rendered
     assert 'id="stats-grand-real"' in rendered
     assert 'id="stats-grand-virtual"' in rendered
+    assert 'id="stats-nights"' in rendered
+    assert 'id="stats-nights-denom"' in rendered
+    assert 'id="stats-nights-pct"' in rendered
+    assert 'id="stats-net-per-night"' in rendered
+    assert 'id="stats-gross-per-night"' in rendered
 
 
 def test_stats_template_shows_pm_and_company_labels():

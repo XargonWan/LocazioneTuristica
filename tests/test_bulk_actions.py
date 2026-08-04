@@ -394,7 +394,7 @@ def test_api_stats_monthly_includes_net_and_expense():
         stats_year = 2037
         inc = Income(apartment_id=None, platform_id=None, date=f'{stats_year}-02-01', gross_amount=200.0,
                      vat_percent=22.0, net_amount=160.0, pm_percent=5.0, pm_amount=8.0, net_after_pm=152.0,
-                     notes='room')
+                     check_out=f'{stats_year}-02-04', notes='room')
         exp = Expense(apartment_id=None, date=f'{stats_year}-02-15', gross_amount=50.0,
                       vat_percent=22.0, net_amount=41.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=41.0,
                       notes='clean', is_cleaning=True)
@@ -412,9 +412,80 @@ def test_api_stats_monthly_includes_net_and_expense():
         assert payload['totals']['pm_due'] == 8.0
         assert payload['totals']['grand_total_real'] == 110.0
         assert payload['totals']['grand_total_virtual'] == 102.0
+        # nights: check-out 02-04 minus check-in 02-01 -> 3 nights
+        assert payload['totals']['nights'] == 3
+        assert payload['totals']['nights_denominator'] == 365
+        assert payload['totals']['nights_percent'] == round(3 / 365 * 100, 2)
+        assert payload['totals']['gross_per_night'] == round(200.0 / 3, 2)
+        assert payload['totals']['net_per_night'] == round(152.0 / 3, 2)
     finally:
         db.query(Income).filter(Income.id == inc.id).delete()
         db.query(Expense).filter(Expense.id == exp.id).delete()
+        db.commit()
+        db.close()
+
+
+def test_api_stats_nights_fallback_and_all_years_denominator():
+    db = SessionLocal()
+    try:
+        from datetime import datetime as _parse_date
+        from app.routers.pages import _income_nights as app_income_nights
+        from app.utils import get_income_effective_amount as calc_effective
+        y1 = 2041
+        y2 = 2042
+        inc1 = Income(apartment_id=None, platform_id=None, date=f'{y1}-01-01', gross_amount=100.0,
+                      vat_percent=0.0, net_amount=100.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=100.0,
+                      notes='one-night')
+        inc2 = Income(apartment_id=None, platform_id=None, date=f'{y1}-02-01', gross_amount=300.0,
+                      vat_percent=0.0, net_amount=240.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=240.0,
+                      check_out=f'{y1}-02-06', notes='five-nights')
+        inc3 = Income(apartment_id=None, platform_id=None, date=f'{y2}-03-01', gross_amount=50.0,
+                      vat_percent=0.0, net_amount=40.0, pm_percent=0.0, pm_amount=0.0, net_after_pm=40.0,
+                      notes='one-night-other-year')
+        db.add_all([inc1, inc2, inc3]); db.commit()
+
+        resp = client.get(f'/api/stats/monthly?year={y1}')
+        assert resp.status_code == 200
+        totals = resp.json()['totals']
+        # inc1 has no check_out -> 1 night, inc2 spans 02-01..02-06 -> 5 nights
+        assert totals['nights'] == 6
+        assert totals['nights_denominator'] == 365
+        assert totals['nights_percent'] == round(6 / 365 * 100, 2)
+        assert totals['gross_per_night'] == round(400.0 / 6, 2)
+        assert totals['net_per_night'] == round(340.0 / 6, 2)
+
+        resp_all = client.get('/api/stats/monthly?year=0')
+        assert resp_all.status_code == 200
+        totals_all = resp_all.json()['totals']
+        # all years: denominator is 365 * number of years with incomes and the
+        # aggregates span every income in the DB, so compute them from the DB
+        all_incomes = db.query(Income).all()
+        expected_nights = 0
+        expected_gross = 0.0
+        expected_net = 0.0
+        income_years = set()
+        for inc in all_incomes:
+            try:
+                d = _parse_date.strptime(inc.date, '%Y-%m-%d')
+            except Exception:
+                continue
+            income_years.add(d.year)
+            expected_nights += app_income_nights(inc, d)
+            expected_gross += float(inc.gross_amount or 0.0)
+            amt = float(getattr(inc, 'net_after_pm', None) or 0.0)
+            if not amt:
+                amt = calc_effective(inc)
+            expected_net += amt
+        expected_denom = 365 * len(income_years)
+        assert expected_denom > 0
+        assert expected_nights > 0
+        assert totals_all['nights'] == expected_nights
+        assert totals_all['nights_denominator'] == expected_denom
+        assert totals_all['nights_percent'] == round(expected_nights / expected_denom * 100, 2)
+        assert totals_all['gross_per_night'] == round(expected_gross / expected_nights, 2)
+        assert totals_all['net_per_night'] == round(expected_net / expected_nights, 2)
+    finally:
+        db.query(Income).filter(Income.id.in_([inc1.id, inc2.id, inc3.id])).delete()
         db.commit()
         db.close()
 
