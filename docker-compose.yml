@@ -10,5 +10,6 @@ services:
       - ./data:/data
     environment:
       - DATABASE_URL=sqlite:////data/db.sqlite3
+      - UPLOAD_DIR=/data/attachments
       - SECRET_KEY=changeme
     restart: unless-stopped
